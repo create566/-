@@ -1,0 +1,22 @@
+# Prometheus 配置
+# 用于远程检测器（Prometheus 检测器）
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Node Exporter（服务器监控）
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node-exporter:9100']
+
+  # 应用监控（可选）
+  - job_name: 'smart-monitor'
+    static_configs:
+      - targets: ['app:9900']
+    metrics_path: '/metrics'

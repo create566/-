@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能监控平台</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- 顶部导航 -->
+        <header class="header">
+            <h1>🔍 智能 OnCall 监控平台</h1>
+            <nav>
+                <button class="tab active" data-view="dashboard">📊 仪表盘</button>
+                <button class="tab" data-view="systems">⚙️ 系统管理</button>
+                <button class="tab" data-view="incidents">🚨 故障历史</button>
+                <button class="tab" data-view="register">➕ 注册系统</button>
+            </nav>
+        </header>
+
+        <!-- 仪表盘视图 -->
+        <section id="view-dashboard" class="view active">
+            <div class="stats-grid" id="stats"></div>
+            <h2>系统列表</h2>
+            <div class="table-container" id="dashboard-systems"></div>
+        </section>
+
+        <!-- 系统管理视图 -->
+        <section id="view-systems" class="view">
+            <h2>已注册系统</h2>
+            <div class="table-container" id="systems-list"></div>
+        </section>
+
+        <!-- 故障历史视图 -->
+        <section id="view-incidents" class="view">
+            <h2>故障记录</h2>
+            <div class="filters">
+                <select id="filter-severity"><option value="">全部级别</option><option value="critical">严重</option><option value="warning">警告</option></select>
+                <select id="filter-status"><option value="">全部状态</option><option value="open">未处理</option><option value="acknowledged">已确认</option><option value="resolved">已解决</option></select>
+                <button onclick="loadIncidents()">刷新</button>
+            </div>
+            <div id="incidents-list"></div>
+        </section>
+
+        <!-- 注册系统视图 -->
+        <section id="view-register" class="view">
+            <h2>注册新监控系统</h2>
+            <form id="register-form" class="form">
+                <label>系统名称 <input type="text" id="reg-name" placeholder="例如: 生产环境API服务" required></label>
+                <label>系统类型
+                    <select id="reg-type">
+                        <option value="web_service">Web服务</option>
+                        <option value="server">服务器</option>
+                        <option value="database">数据库</option>
+                        <option value="cache">缓存</option>
+                    </select>
+                </label>
+                <label>目标地址 <input type="text" id="reg-endpoint" placeholder="例如: https://api.example.com 或 localhost"></label>
+                <label>检测间隔(秒) <input type="number" id="reg-interval" value="60" min="10" max="3600"></label>
+
+                <h3>选择检测器</h3>
+                <div id="detector-options"></div>
+
+                <label>☑ <input type="checkbox" id="reg-alert" checked> 启用飞书告警推送</label>
+                <button type="submit" class="btn-primary">🚀 注册并启动监控</button>
+            </form>
+            <div id="register-result"></div>
+        </section>
+
+        <!-- 故障详情 Modal -->
+        <div id="modal" class="modal" style="display:none">
+            <div class="modal-content">
+                <span class="close" onclick="closeModal()">&times;</span>
+                <div id="modal-body"></div>
+            </div>
+        </div>
+    </div>
+    <script src="/static/app.js"></script>
+</body>
+</html>

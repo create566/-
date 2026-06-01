@@ -1,0 +1,120 @@
+# 智能监控平台 - Docker Compose
+# 启动所有依赖服务
+# 用法: docker-compose up -d
+
+version: '3.8'
+
+services:
+  # 应用服务
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: smart-monitor-app
+    ports:
+      - "9900:9900"
+    environment:
+      # 数据库
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: root123
+      DB_NAME: smart_monitor
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      # Milvus
+      MILVUS_HOST: milvus
+      MILVUS_PORT: 19530
+      # LLM
+      LLM_PROVIDER: openai
+      LLM_API_KEY: ${LLM_API_KEY}
+      LLM_API_BASE: ${LLM_API_BASE:-https://api.deepseek.com}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-v4-flash}
+      # Embedding
+      EMBEDDING_PROVIDER: openai
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY}
+      EMBEDDING_CLOUD_MODEL: text-embedding-3-small
+      EMBEDDING_CLOUD_DIM: "1536"
+      # 飞书
+      FEISHU_WEBHOOK_URL: ${FEISHU_WEBHOOK_URL}
+      FEISHU_APP_ID: ${FEISHU_APP_ID}
+      FEISHU_APP_SECRET: ${FEISHU_APP_SECRET}
+      # API 认证
+      API_KEY: ${API_KEY:-sm_monitor_change_me_in_production}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      milvus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9900/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  # MySQL 数据库
+  mysql:
+    image: mysql:8.0
+    container_name: smart-monitor-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: smart_monitor
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Redis 缓存
+  redis:
+    image: redis:7-alpine
+    container_name: smart-monitor-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  # Milvus 向量数据库
+  milvus:
+    image: milvusdb/milvus:v2.3.0
+    container_name: smart-monitor-milvus
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    volumes:
+      - milvus_data:/var/lib/milvus
+    environment:
+      ETCD_USE_EMBED: true
+      COMMON_STORAGETYPE: local
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Prometheus（可选，用于远程检测器）
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: smart-monitor-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+  redis_data:
+  milvus_data:
