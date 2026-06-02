@@ -97,11 +97,11 @@ async def _make_diagnosis_plan(state: AgentState, llm) -> dict:
     diagnosis_rounds = state.get("diagnosis_rounds", 0)
 
     anomaly_text = "\n".join(
-        f"- {a.get('detector','')}: {a.get('metric_name','')}={a.get('current_value',a.get('value',''))} ({a.get('severity','')})"
+        f"- {a.get('detector_name','')}: {a.get('metric_name','')}={a.get('metric_value','')} ({a.get('severity','')})"
         for a in anomalies
     )
     results_text = "\n".join(
-        f"- {r.get('detector_name','')}: {r.get('value','')}" for r in results
+        f"- {r.get('detector_name','')}: {r.get('metric_name','')}={r.get('metric_value','')}" for r in results
     )
 
     prompt = f"""你是资深运维专家，需要深度排查系统故障。

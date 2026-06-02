@@ -76,6 +76,7 @@ class FeishuBotListener:
         # 2. 查每个群的最新消息
         for chat in chats:
             chat_id = chat.get("chat_id", "")
+            chat_name = chat.get("name", "?")
             if not chat_id:
                 continue
             try:
@@ -117,20 +118,33 @@ class FeishuBotListener:
 
                 if not text:
                     continue
+
+                # 解析 @ 机器人 的 user_id
+                mentions = item.get("mentions", []) or []
+                mention_keys = [m.get("key", "") for m in mentions]
+                mention_ids = [m.get("id", "") for m in mentions]
+
+                # 检查是否 @了机器人（text 内容含 <at></at> 标签 或 mentions 含 bot key）
+                is_mentioned = (
+                    "<at" in text or
+                    "bot" in mention_keys or
+                    any(k.startswith("@") for k in mention_keys)
+                )
                 t = text.lower()
-                if "状态" not in t and "status" not in t:
-                    continue
+                is_status_query = any(k in t for k in ["状态", "status", "在线", "check", "查询", "监控"])
 
-                logger.info(f"飞书收到[{chat.get('name','?')}]: {text[:80]}")
+                logger.info(f"飞书[{chat_name}] msg_id={msg_id[:8]} text={text[:60]} mentions={mention_keys} is_mentioned={is_mentioned} is_status={is_status_query}")
 
-                if self.message_handler:
-                    import asyncio
-                    try:
-                        reply = asyncio.run(self.message_handler("", text))
-                        if reply:
-                            self._reply(token, msg_id, reply)
-                    except Exception as e:
-                        logger.error(f"处理消息异常: {e}")
+                # 只要 @了机器人 或包含上述关键词之一，就回复
+                if is_mentioned or is_status_query:
+                    if self.message_handler:
+                        import asyncio
+                        try:
+                            reply = asyncio.run(self.message_handler("", text))
+                            if reply:
+                                self._reply(token, msg_id, reply)
+                        except Exception as e:
+                            logger.error(f"处理消息异常: {e}")
 
         # 限制缓存大小
         if len(self._seen_msgs) > 500:

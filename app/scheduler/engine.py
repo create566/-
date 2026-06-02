@@ -5,6 +5,7 @@ from typing import Dict, Callable, Optional
 from loguru import logger
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
+from apscheduler.triggers.cron import CronTrigger
 
 
 class MonitorScheduler:
@@ -25,7 +26,14 @@ class MonitorScheduler:
     def start(self):
         if not self._scheduler.running:
             self._scheduler.start()
-            logger.info("MonitorScheduler 已启动")
+            # 每天凌晨3点清理7天前的数据
+            self._scheduler.add_job(
+                func=self._run_cleanup,
+                trigger=CronTrigger(hour=3, minute=0),
+                id="cleanup_old_data",
+                replace_existing=True,
+            )
+            logger.info("MonitorScheduler 已启动（数据清理任务: 每天 03:00）")
 
     def shutdown(self):
         if self._scheduler.running:
@@ -64,14 +72,28 @@ class MonitorScheduler:
         return [{"system_id": sid, "interval_seconds": iv} for sid, iv in self._system_ids.items()]
 
     async def _run_check(self, system_id: str):
-        """包装检测调用，异常不中断调度"""
+        """包装检测调用 — 在线程池中隔离运行，避免 LLM 调用阻塞事件循环"""
         if self._check_fn is None:
             logger.warning("检测回调未设置")
             return
         try:
-            await self._check_fn(system_id)
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, self._run_check_sync, system_id)
         except Exception as e:
             logger.error(f"定时检测失败 [{system_id}]: {e}")
+
+    def _run_check_sync(self, system_id: str):
+        """在线程独立 event loop 中执行异步检测，完全隔离"""
+        asyncio.run(self._check_fn(system_id))
+
+    async def _run_cleanup(self):
+        """每天清理过期数据"""
+        from app.dao import store
+        try:
+            count = store.cleanup_old_data(days=7)
+            logger.info(f"数据清理完成: 删除 {count} 条过期记录")
+        except Exception as e:
+            logger.error(f"数据清理失败: {e}")
 
 
 # 全局单例

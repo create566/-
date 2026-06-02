@@ -26,7 +26,9 @@ RUN pip install --no-cache-dir -e .
 # 复制应用代码
 COPY app/ ./app/
 COPY static/ ./static/
-COPY data/ ./data/ 2>/dev/null || true
+
+# data 目录（如果不存在则跳过）
+RUN mkdir -p data || true
 
 # 创建非 root 用户
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app

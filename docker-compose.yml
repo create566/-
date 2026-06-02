@@ -2,7 +2,6 @@
 # 启动所有依赖服务
 # 用法: docker-compose up -d
 
-version: '3.8'
 
 services:
   # 应用服务
@@ -14,11 +13,11 @@ services:
     ports:
       - "9900:9900"
     environment:
-      # 数据库
-      DB_HOST: mysql
+      # 数据库（使用本机 MySQL）
+      DB_HOST: host.docker.internal
       DB_PORT: 3306
       DB_USER: root
-      DB_PASSWORD: root123
+      DB_PASSWORD: 123456
       DB_NAME: smart_monitor
       # Redis
       REDIS_HOST: redis
@@ -26,25 +25,30 @@ services:
       # Milvus
       MILVUS_HOST: milvus
       MILVUS_PORT: 19530
-      # LLM
-      LLM_PROVIDER: openai
-      LLM_API_KEY: ${LLM_API_KEY}
-      LLM_API_BASE: ${LLM_API_BASE:-https://api.deepseek.com}
-      LLM_MODEL: ${LLM_MODEL:-deepseek-v4-flash}
-      # Embedding
-      EMBEDDING_PROVIDER: openai
-      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY}
-      EMBEDDING_CLOUD_MODEL: text-embedding-3-small
-      EMBEDDING_CLOUD_DIM: "1536"
+      # LLM 配置（支持 vllm / ollama / openai）
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+      LLM_API_KEY: ${LLM_API_KEY:-local}
+      LLM_API_BASE: ${LLM_API_BASE:-http://host.docker.internal:8010/v1}
+      LLM_MODEL: ${LLM_MODEL:-/models/Qwen/Qwen2-0___5B-Instruct}
+      # Ollama 特定（LLM_PROVIDER=ollama 时使用）
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b}
+      # Embedding 配置（支持 local / openai / azure）
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-openai}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-local}
+      EMBEDDING_API_BASE: ${EMBEDDING_API_BASE:-http://host.docker.internal:8011/v1}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-bge-large-zh-v1.5}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-1024}
+      # 云端 Embedding（EMBEDDING_PROVIDER=openai/azure 时使用）
+      EMBEDDING_CLOUD_MODEL: ${EMBEDDING_CLOUD_MODEL:-text-embedding-3-small}
+      EMBEDDING_CLOUD_DIM: ${EMBEDDING_CLOUD_DIM:-1536}
       # 飞书
-      FEISHU_WEBHOOK_URL: ${FEISHU_WEBHOOK_URL}
-      FEISHU_APP_ID: ${FEISHU_APP_ID}
-      FEISHU_APP_SECRET: ${FEISHU_APP_SECRET}
+      FEISHU_WEBHOOK_URL: ${FEISHU_WEBHOOK_URL:-}
+      FEISHU_ENABLED: ${FEISHU_ENABLED:-True}
+      FEISHU_APP_ID: ${FEISHU_APP_ID:-}
+      FEISHU_APP_SECRET: ${FEISHU_APP_SECRET:-}
       # API 认证
-      API_KEY: ${API_KEY:-sm_monitor_change_me_in_production}
+      API_KEY: ${API_KEY:-change-this-in-production}
     depends_on:
-      mysql:
-        condition: service_healthy
       redis:
         condition: service_started
       milvus:
@@ -57,23 +61,23 @@ services:
       start_period: 40s
     restart: unless-stopped
 
-  # MySQL 数据库
-  mysql:
-    image: mysql:8.0
-    container_name: smart-monitor-mysql
-    environment:
-      MYSQL_ROOT_PASSWORD: root123
-      MYSQL_DATABASE: smart_monitor
-    ports:
-      - "3306:3306"
-    volumes:
-      - mysql_data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
+  # MySQL 数据库（使用本机 MySQL，此处注释掉）
+  # mysql:
+  #   image: mysql:8.0
+  #   container_name: smart-monitor-mysql
+  #   environment:
+  #     MYSQL_ROOT_PASSWORD: root123
+  #     MYSQL_DATABASE: smart_monitor
+  #   ports:
+  #     - "3306:3306"
+  #   volumes:
+  #     - mysql_data:/var/lib/mysql
+  #   healthcheck:
+  #     test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #   restart: unless-stopped
 
   # Redis 缓存
   redis:
@@ -95,8 +99,8 @@ services:
     volumes:
       - milvus_data:/var/lib/milvus
     environment:
-      ETCD_USE_EMBED: true
-      COMMON_STORAGETYPE: local
+      ETCD_USE_EMBED: "true"
+    command: milvus run standalone
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9091/health"]
       interval: 10s

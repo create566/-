@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from loguru import logger
 
 from sqlalchemy import (
-    Column, String, Integer, Text, DateTime, Boolean, JSON, create_engine
+    Column, String, Integer, Text, DateTime, Boolean, JSON, Float, create_engine
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
@@ -43,12 +43,14 @@ class Incident(Base):
 
     id = Column(String(64), primary_key=True)
     system_id = Column(String(64), nullable=False, index=True)
+    system_name = Column(String(128), nullable=True)
     severity = Column(String(16), nullable=False)
     status = Column(String(16), default="open")
     title = Column(String(256), nullable=False)
     message = Column(Text, nullable=True)
     root_cause = Column(Text, nullable=True)
     report = Column(Text, nullable=True)
+    anomalies = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     acknowledged_at = Column(DateTime, nullable=True)
     resolved_at = Column(DateTime, nullable=True)
@@ -61,7 +63,7 @@ class CheckHistory(Base):
     system_id = Column(String(64), nullable=False, index=True)
     detector_name = Column(String(64), nullable=False)
     metric_name = Column(String(64), nullable=False)
-    metric_value = Column(String(32), nullable=True)
+    metric_value = Column(Float, nullable=True)
     severity = Column(String(16), default="normal")
     checked_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
 
@@ -75,7 +77,7 @@ _SessionLocal = None
 def init_db(host: str, port: int, user: str, password: str, name: str):
     """初始化数据库引擎"""
     global _engine, _SessionLocal
-    url = f"mysql+aiomysql://{user}:{password}@{host}:{port}/{name}?charset=utf8mb4"
+    url = f"mysql+pymysql://{user}:{password}@{host}:{port}/{name}?charset=utf8mb4"
     _engine = create_engine(url, pool_size=10, max_overflow=20, pool_pre_ping=True)
     _SessionLocal = sessionmaker(bind=_engine)
     Base.metadata.create_all(_engine)
@@ -208,7 +210,7 @@ def create_system(data: Dict) -> Dict:
     )
     with get_session() as session:
         session.add(system)
-        session.flush()
+        session.commit()
         result = _system_to_dict(system)
     logger.info(f"系统已注册(MySQL): {data['name']} ({system.id})")
     return result
@@ -234,7 +236,7 @@ def update_system(system_id: str, data: Dict) -> Optional[Dict]:
             if value is not None and hasattr(s, key):
                 setattr(s, key, value)
         s.updated_at = datetime.now(timezone.utc)
-        session.flush()
+        session.commit()
         return _system_to_dict(s)
 
 
@@ -278,17 +280,19 @@ def create_incident(data: Dict) -> Dict:
     incident = Incident(
         id=data.get("id", ""),
         system_id=data.get("system_id", ""),
+        system_name=data.get("system_name", ""),
         severity=data.get("severity", "warning"),
-        status="open",
+        status=data.get("status", "open"),
         title=data.get("title", ""),
         message=data.get("message"),
         root_cause=data.get("root_cause"),
         report=data.get("report"),
+        anomalies=data.get("anomalies", []),
         created_at=now,
     )
     with get_session() as session:
         session.add(incident)
-        session.flush()
+        session.commit()
         result = _incident_to_dict(incident)
     return result
 
@@ -353,7 +357,7 @@ def update_incident_status(incident_id: str, status: str) -> Optional[Dict]:
             inc.resolved_at = datetime.now(timezone.utc)
         elif status == "acknowledged":
             inc.acknowledged_at = datetime.now(timezone.utc)
-        session.flush()
+        session.commit()
         return _incident_to_dict(inc)
 
 
@@ -375,7 +379,7 @@ def update_incident_field(incident_id: str, updates: dict) -> Optional[Dict]:
         for key, value in updates.items():
             if hasattr(inc, key):
                 setattr(inc, key, value)
-        session.flush()
+        session.commit()
         return _incident_to_dict(inc)
 
 
@@ -404,12 +408,12 @@ def save_check_history(results: List[Dict]):
                 system_id=r.get("system_id", ""),
                 detector_name=r.get("detector_name", ""),
                 metric_name=r.get("metric_name", ""),
-                metric_value=str(r.get("current_value", 0)),
+                metric_value=r.get("current_value", 0),
                 severity=r.get("severity", "normal"),
                 checked_at=datetime.now(timezone.utc),
             )
             session.add(history)
-        session.flush()
+        session.commit()
 
 
 def get_check_history(system_id: Optional[str] = None, limit: int = 100) -> List[Dict]:
@@ -451,12 +455,15 @@ def _incident_to_dict(i: Incident) -> Dict:
     return {
         "id": i.id,
         "system_id": i.system_id,
+        "system_name": i.system_name or "",
         "severity": i.severity,
         "status": i.status,
         "title": i.title,
         "message": i.message,
         "root_cause": i.root_cause,
         "report": i.report,
+        "report_markdown": i.report,
+        "anomalies": i.anomalies or [],
         "created_at": i.created_at.isoformat() if i.created_at else None,
         "acknowledged_at": i.acknowledged_at.isoformat() if i.acknowledged_at else None,
         "resolved_at": i.resolved_at.isoformat() if i.resolved_at else None,
@@ -468,7 +475,7 @@ def _history_to_dict(h: CheckHistory) -> Dict:
         "system_id": h.system_id,
         "detector_name": h.detector_name,
         "metric_name": h.metric_name,
-        "metric_value": h.metric_value,
+        "metric_value": float(h.metric_value) if h.metric_value is not None else 0,
         "severity": h.severity,
         "checked_at": h.checked_at.isoformat() if h.checked_at else None,
     }
@@ -485,6 +492,57 @@ def save_report_md(incident_id: str, report_content: str) -> str:
         f.write(report_content)
     logger.info(f"报告已保存: {filepath}")
     return filepath
+
+
+def cleanup_old_data(days: int = 7):
+    """清理 N 天前的数据（JSON模式：check_history.json + reports目录）"""
+    import os
+    from datetime import datetime, timezone, timedelta
+
+    if _engine is None and not _json_mode:
+        return
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    cleaned = 0
+
+    # 清理 check_history.json 中超过7天的记录
+    if _json_mode:
+        history_file = DATA_DIR / "check_history.json"
+        if history_file.exists():
+            try:
+                data = json.loads(history_file.read_text(encoding="utf-8"))
+                before = len(data)
+                data = [
+                    h for h in data
+                    if datetime.fromisoformat(h["checked_at"]).replace(tzinfo=timezone.utc) > cutoff
+                ]
+                after = len(data)
+                if before > after:
+                    history_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+                    cleaned += before - after
+                    logger.info(f"清理 check_history.json: 删除 {before - after} 条过期记录，保留 {after} 条")
+            except Exception as e:
+                logger.warning(f"清理 check_history.json 失败: {e}")
+
+    # 清理 reports 目录下超过7天的 .md 文件
+    try:
+        from app.config import config
+        report_dir = Path(config.report_dir)
+        if report_dir.exists():
+            for f in report_dir.glob("incident_*.md"):
+                try:
+                    mtime = datetime.fromtimestamp(f.stat().st_mtime, tz=timezone.utc)
+                    if mtime < cutoff:
+                        f.unlink()
+                        cleaned += 1
+                except Exception:
+                    pass
+            if cleaned > 0:
+                logger.info(f"清理报告文件: 删除 {cleaned} 个过期文件")
+    except Exception as e:
+        logger.warning(f"清理报告目录失败: {e}")
+
+    return cleaned
 
 
 # ==================== 初始化 ====================

@@ -44,11 +44,11 @@ async def replanner(state: AgentState) -> dict:
 
     # ② LLM 深度判断
     results_text = "\n".join(
-        f"- {r.get('detector','')}: {r.get('metric','')}={r.get('value','')} ({r.get('severity','')}) — {r.get('message','')}"
+        f"- {r.get('detector_name','')}: {r.get('metric_name','')}={r.get('metric_value','')} ({r.get('severity','')}) — {r.get('message','')}"
         for r in results
     )
     anomalies_text = "\n".join(
-        f"- {a.get('detector','')}: {a.get('metric','')}={a.get('value','')} ({a.get('severity','')})"
+        f"- {a.get('detector_name','')}: {a.get('metric_name','')}={a.get('metric_value','')} ({a.get('severity','')})"
         for a in anomalies
     )
     history_text = _format_history_trend(history)
@@ -64,7 +64,7 @@ async def _generate_report(state: AgentState, llm, anomalies, results, history_t
     """生成最终诊断报告 — 使用知识库增强专业术语"""
     system_name = state.get("system_name", "")
     results_text = "\n".join(
-        f"| {r.get('detector','')} | {r.get('metric','')} | {r.get('value','')} | {r.get('severity','')} | {r.get('message','')} |"
+        f"| {r.get('detector_name','')} | {r.get('metric_name','')} | {r.get('metric_value','')} | {r.get('severity','')} | {r.get('message','')} |"
         for r in results
     )
 
@@ -153,8 +153,8 @@ def _quick_judge(anomalies: list, history: list) -> str:
         return "normal"
 
     for a in anomalies:
-        detector = a.get("detector", "")
-        value = a.get("value", 0)
+        detector = a.get("detector_name", "")
+        value = a.get("metric_value", 0)
 
         # 找历史中这个检测器的最近值
         hist_values = []
@@ -186,7 +186,7 @@ def _should_diagnose(anomalies: list, history: list) -> bool:
 
     # 规则3: 趋势持续恶化 → 需要诊断
     for a in anomalies:
-        detector = a.get("detector", "")
+        detector = a.get("detector_name", "")
         hist_values = []
         for h in history:
             if h.get("detector_name") == detector:

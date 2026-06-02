@@ -138,7 +138,7 @@ class KnowledgeIndexer:
 
         # 组装插入数据
         for p, v in zip(batch, vectors):
-            p["content_vector"] = vectors[batch.index(p)]
+            p["content_vector"] = v
 
         # 插入 Milvus
         self.milvus.insert(batch)

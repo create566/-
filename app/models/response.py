@@ -4,10 +4,10 @@
 """
 
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional, Generic, TypeVar
+from typing import List, Dict, Any, Optional
 
 
-class UnifiedResponse(BaseModel, Generic[TypeVar("T")]):
+class UnifiedResponse(BaseModel):
     """统一响应格式
 
     所有 API 统一返回格式:

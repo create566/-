@@ -35,8 +35,8 @@ async def executor(state: AgentState) -> dict:
         logger.warning(f"Executor: 未找到检测器 {action}")
         step["status"] = "error"
         results.append({
-            "step": step["step"], "detector": action,
-            "metric": "unknown", "value": 0, "severity": "error",
+            "step": step["step"], "detector_name": action,
+            "metric_name": "unknown", "metric_value": 0, "severity": "error",
             "message": f"未知检测器: {action}",
         })
         return {
@@ -58,9 +58,9 @@ async def executor(state: AgentState) -> dict:
 
         run_result = {
             "step": step["step"],
-            "detector": result.detector_name,
-            "metric": result.metric_name,
-            "value": result.current_value,
+            "detector_name": result.detector_name,
+            "metric_name": result.metric_name,
+            "metric_value": result.current_value,
             "severity": result.severity,
             "message": result.message,
             "raw_data": result.raw_data,
@@ -88,8 +88,8 @@ async def executor(state: AgentState) -> dict:
         logger.error(f"Executor: {action} 执行失败: {e}")
         step["status"] = "error"
         results.append({
-            "step": step["step"], "detector": action,
-            "metric": detector.metric_name, "value": 0, "severity": "error",
+            "step": step["step"], "detector_name": action,
+            "metric_name": detector.metric_name, "metric_value": 0, "severity": "error",
             "message": f"执行失败: {e}",
         })
 

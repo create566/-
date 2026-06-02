@@ -29,19 +29,29 @@ async def lifespan(app: FastAPI):
     logger.info(f"📦 数据库模式: {'MySQL' if not store.is_json_mode() else 'JSON (开发)'}")
 
     # ② 验证 LLM（本地模型启动慢，超时设长一些）
+    import time
     logger.info("🔑 验证 LLM 连接...")
-    try:
-        from langchain_openai import ChatOpenAI
-        from langchain_core.messages import HumanMessage
-        test_llm = ChatOpenAI(
-            model=config.llm_model, api_key=config.llm_api_key,
-            base_url=config.llm_api_base, max_tokens=5, streaming=False,
-            timeout=30, max_retries=2,
-        )
-        test_llm.invoke([HumanMessage(content="hi")])
-        logger.info("✅ LLM 连接正常")
-    except Exception as e:
-        logger.error(f"❌ LLM 不可用: {e}")
+    llm_ready = False
+    for attempt in range(1, 6):
+        try:
+            from langchain_openai import ChatOpenAI
+            from langchain_core.messages import HumanMessage
+            test_llm = ChatOpenAI(
+                model=config.llm_model, api_key=config.llm_api_key,
+                base_url=config.llm_api_base, max_tokens=5, streaming=False,
+                timeout=60, max_retries=1,
+            )
+            test_llm.invoke([HumanMessage(content="hi")])
+            logger.info("✅ LLM 连接正常")
+            llm_ready = True
+            break
+        except Exception as e:
+            logger.warning(f"⏳ LLM 不可用(第{attempt}次): {e}")
+            if attempt < 5:
+                time.sleep(10)
+
+    if not llm_ready:
+        logger.error("❌ LLM 连接失败，应用继续启动但 AI 功能可能受影响")
 
     # ③ 初始化飞书通知器
     if config.feishu_enabled and config.feishu_webhook_url:
@@ -70,39 +80,10 @@ async def lifespan(app: FastAPI):
             monitor_scheduler.schedule(s["id"], s["check_interval_seconds"])
             logger.info(f"📋 已加载系统: {s['name']} (间隔{s['check_interval_seconds']}s)")
 
-    # ⑥ 启动飞书机器人（@机器人 状态 → 实时回复指标）
+    # ⑥ 飞书 WebSocket 由独立进程 run_feishu_ws.py 管理
+    #    新开终端启动: $env:FEISHU_APP_ID="..."; $env:FEISHU_APP_SECRET="..."; python run_feishu_ws.py
     if config.feishu_app_id and config.feishu_app_secret:
-        from app.tools.feishu_ws_bot import FeishuBotListener
-
-        async def handle_feishu_status(open_id, text):
-            t = text.strip().lower()
-            if "状态" in t or "status" in t or "查询" in t:
-                return await _get_status_reply()
-            return None
-
-        async def _get_status_reply():
-            from app.detectors.manager import DetectorManager
-            dm = DetectorManager()
-            lines = [f"📊 机器状态 {time.strftime('%H:%M:%S')}", ""]
-            for s in store.list_systems():
-                if s.get("status") != "active":
-                    continue
-                lines.append(f"【{s['name']}】 健康分:{s.get('health_score', 100)}")
-                try:
-                    results = await dm.run_checks(s)
-                    for r in results:
-                        icon = {"critical":"🔴","warning":"🟡","normal":"🟢","error":"⚠️"}.get(r.severity,"⚪")
-                        lines.append(f"  {icon} {r.metric_name}: {r.current_value}")
-                except Exception as e:
-                    lines.append(f"  ⚠️ 检测失败: {e}")
-                lines.append("")
-            if len(lines) <= 2:
-                return "暂无活跃监控系统"
-            return "\n".join(lines)
-
-        feishu_bot = FeishuBotListener(handle_feishu_status)
-        feishu_bot.start_websocket()
-        logger.info("🤖 飞书机器人已启动，@机器人发送「状态」查询")
+        logger.info(f"🤖 飞书 WebSocket 请在新终端独立启动 (app_id={config.feishu_app_id[:8]}...)")
 
     # ⑦ 确保检测器已注册
     import app.detectors.local    # noqa: F401

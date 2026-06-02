@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     db_host: str = "localhost"
     db_port: int = 3306
     db_user: str = "root"
-    db_password: str = ""
+    db_password: str = "123456"
     db_name: str = "smart_monitor"
 
     # Redis
@@ -58,7 +58,8 @@ class Settings(BaseSettings):
     #   embedding_provider="local": 使用本地服务（Ollama/LMA-Factory）
     #   embedding_provider="openai": 使用 OpenAI API（text-embedding-3-small）
     #   embedding_provider="azure": 使用 Azure OpenAI
-    embedding_provider: str = "local"  # local / openai / azure
+    #   embedding_provider="vllm": 使用本地 vLLM 服务
+    embedding_provider: str = "local"  # local / openai / azure / vllm
     embedding_api_key: str = "local"
     embedding_api_base: str = "http://localhost:11434/v1"  # 本地服务地址
     embedding_model: str = "bge-large-zh-v1.5"  # 本地模型名
@@ -73,14 +74,14 @@ class Settings(BaseSettings):
     feishu_enabled: bool = True
 
     # 飞书机器人（接收消息 / @机器人查询状态）
-    feishu_app_id: str = "cli_aa93d9202afa5bd9"
-    feishu_app_secret: str = "4muhsqpI7Rno2YOdofE3tbx0rtMiHOhO"
+    feishu_app_id: str = "cli_aa9475644e385cc2"
+    feishu_app_secret: str = "rLgezJJ57bOoIcfDdH4nFbNHAlby4YLk"
 
     # Prometheus 默认地址（远程检测器使用）
     prometheus_url: str = "http://localhost:9090"
 
     # 报告保存目录
-    report_dir: str = "D:\桌面\智能仓库\reports"
+    report_dir: str = r"D:\桌面\智能仓库\reports"
 
     # API 认证
     api_key: str = "sm_monitor_2024_secret_key_change_in_production"

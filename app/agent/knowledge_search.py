@@ -66,7 +66,7 @@ def search_knowledge(anomalies: list[dict], diagnosis_hint: str = "") -> str:
     # ① 从异常指标中提取关键词
     keywords = set()
     for a in anomalies:
-        name = a.get("detector", "") + " " + a.get("metric_name", "")
+        name = a.get("detector_name", "") + " " + a.get("metric_name", "")
         msg = a.get("message", "")
         combined = (name + " " + msg).lower()
         for tag in TAG_INDEX:
@@ -189,7 +189,7 @@ async def search_knowledge_vector(
     # ① 构建查询文本
     query_parts = []
     for a in anomalies:
-        detector = a.get("detector", "")
+        detector = a.get("detector_name", "")
         metric = a.get("metric_name", "")
         message = a.get("message", "")
         severity = a.get("severity", "")

@@ -25,6 +25,8 @@ async def health_check():
             base_url=config.llm_api_base,
             max_tokens=5,
             streaming=False,
+            timeout=30,
+            max_retries=1,
         )
         test_llm.invoke([HumanMessage(content="ping")])
         services["llm"] = {"available": True, "message": "LLM 连接正常"}

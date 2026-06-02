@@ -1,6 +1,17 @@
 /** 智能监控平台 — 管理端 SPA */
 
 const API = '/api';
+const API_KEY = 'smart-monitor-dev-key';
+
+// 通用的 fetch 封装，自动带 API Key
+async function apiFetch(url, options = {}) {
+    const headers = { ...options.headers };
+    // 手动添加 X-API-Key（不覆盖已有的）
+    if (!headers['X-API-Key'] && !headers['x-api-key']) {
+        headers['X-API-Key'] = API_KEY;
+    }
+    return fetch(url, { ...options, headers });
+}
 
 // ==================== 路由 ====================
 document.querySelectorAll('.tab').forEach(tab => {
@@ -20,7 +31,7 @@ document.querySelectorAll('.tab').forEach(tab => {
 // ==================== 仪表盘 ====================
 async function loadDashboard() {
     try {
-        const resp = await fetch(API + '/monitoring/status');
+        const resp = await apiFetch(API + '/monitoring/status');
         const data = await resp.json();
         const d = data.data.result;
 
@@ -56,7 +67,7 @@ async function loadDashboard() {
 // ==================== 系统管理 ====================
 async function loadSystems() {
     try {
-        const resp = await fetch(API + '/systems');
+        const resp = await apiFetch(API + '/systems');
         const data = await resp.json();
         const systems = data.data.result.systems;
         let html = '<table><tr><th>名称</th><th>类型</th><th>地址</th><th>检测器</th><th>间隔</th><th>状态</th><th>操作</th></tr>';
@@ -88,7 +99,7 @@ async function loadIncidents() {
     if (severity) url += '&severity=' + severity;
     if (status) url += '&status=' + status;
     try {
-        const resp = await fetch(url);
+        const resp = await apiFetch(url);
         const data = await resp.json();
         const incidents = data.data.result.incidents;
         if (incidents.length === 0) {
@@ -121,7 +132,7 @@ async function loadIncidents() {
 // ==================== 注册系统 ====================
 async function loadDetectorOptions() {
     try {
-        const resp = await fetch(API + '/detectors');
+        const resp = await apiFetch(API + '/detectors');
         const data = await resp.json();
         const detectors = data.data.result.detectors;
         let html = '';
@@ -176,7 +187,7 @@ document.getElementById('register-form').addEventListener('submit', async (e) =>
         alert_enabled: document.getElementById('reg-alert').checked,
     };
     try {
-        const resp = await fetch(API + '/systems', {
+        const resp = await apiFetch(API + '/systems', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -200,26 +211,26 @@ document.getElementById('register-form').addEventListener('submit', async (e) =>
 // ==================== 操作函数 ====================
 async function manualCheck(systemId) {
     try {
-        await fetch(API + '/systems/' + systemId + '/check', { method: 'POST' });
+        await apiFetch(API + '/systems/' + systemId + '/check', { method: 'POST' });
         setTimeout(loadDashboard, 2000);
     } catch (e) { console.error(e); }
 }
 
 async function togglePause(systemId, status) {
     const action = status === 'active' ? 'pause' : 'resume';
-    await fetch(API + '/systems/' + systemId + '/' + action, { method: 'POST' });
+    await apiFetch(API + '/systems/' + systemId + '/' + action, { method: 'POST' });
     loadDashboard();
 }
 
 async function deleteSystem(systemId) {
     if (!confirm('确定要删除这个系统吗？')) return;
-    await fetch(API + '/systems/' + systemId, { method: 'DELETE' });
+    await apiFetch(API + '/systems/' + systemId, { method: 'DELETE' });
     loadDashboard();
 }
 
 async function viewReport(incidentId) {
     try {
-        const resp = await fetch(API + '/incidents/' + incidentId);
+        const resp = await apiFetch(API + '/incidents/' + incidentId);
         const data = await resp.json();
         const incident = data.data.result;
         const isPending = incident.status === 'pending';
@@ -237,7 +248,7 @@ async function viewReport(incidentId) {
 }
 
 async function pushIncident(id) {
-    await fetch(API + '/incidents/' + id + '/push', { method: 'POST' });
+    await apiFetch(API + '/incidents/' + id + '/push', { method: 'POST' });
     closeModal();
     loadIncidents();
 }
@@ -247,12 +258,12 @@ function closeModal() {
 }
 
 async function ackIncident(id) {
-    await fetch(API + '/incidents/' + id + '/acknowledge', { method: 'PUT' });
+    await apiFetch(API + '/incidents/' + id + '/acknowledge', { method: 'PUT' });
     loadIncidents();
 }
 
 async function resolveIncident(id) {
-    await fetch(API + '/incidents/' + id + '/resolve', { method: 'PUT' });
+    await apiFetch(API + '/incidents/' + id + '/resolve', { method: 'PUT' });
     loadIncidents();
 }
 
