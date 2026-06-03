@@ -2,83 +2,7 @@
 # 启动所有依赖服务
 # 用法: docker-compose up -d
 
-
 services:
-  # 应用服务
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: smart-monitor-app
-    ports:
-      - "9900:9900"
-    environment:
-      # 数据库（使用本机 MySQL）
-      DB_HOST: host.docker.internal
-      DB_PORT: 3306
-      DB_USER: root
-      DB_PASSWORD: 123456
-      DB_NAME: smart_monitor
-      # Redis
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      # Milvus
-      MILVUS_HOST: milvus
-      MILVUS_PORT: 19530
-      # LLM 配置（支持 vllm / ollama / openai）
-      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
-      LLM_API_KEY: ${LLM_API_KEY:-local}
-      LLM_API_BASE: ${LLM_API_BASE:-http://host.docker.internal:8010/v1}
-      LLM_MODEL: ${LLM_MODEL:-/models/Qwen/Qwen2-0___5B-Instruct}
-      # Ollama 特定（LLM_PROVIDER=ollama 时使用）
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b}
-      # Embedding 配置（支持 local / openai / azure）
-      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-openai}
-      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-local}
-      EMBEDDING_API_BASE: ${EMBEDDING_API_BASE:-http://host.docker.internal:8011/v1}
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-bge-large-zh-v1.5}
-      EMBEDDING_DIM: ${EMBEDDING_DIM:-1024}
-      # 云端 Embedding（EMBEDDING_PROVIDER=openai/azure 时使用）
-      EMBEDDING_CLOUD_MODEL: ${EMBEDDING_CLOUD_MODEL:-text-embedding-3-small}
-      EMBEDDING_CLOUD_DIM: ${EMBEDDING_CLOUD_DIM:-1536}
-      # 飞书
-      FEISHU_WEBHOOK_URL: ${FEISHU_WEBHOOK_URL:-}
-      FEISHU_ENABLED: ${FEISHU_ENABLED:-True}
-      FEISHU_APP_ID: ${FEISHU_APP_ID:-}
-      FEISHU_APP_SECRET: ${FEISHU_APP_SECRET:-}
-      # API 认证
-      API_KEY: ${API_KEY:-change-this-in-production}
-    depends_on:
-      redis:
-        condition: service_started
-      milvus:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9900/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    restart: unless-stopped
-
-  # MySQL 数据库（使用本机 MySQL，此处注释掉）
-  # mysql:
-  #   image: mysql:8.0
-  #   container_name: smart-monitor-mysql
-  #   environment:
-  #     MYSQL_ROOT_PASSWORD: root123
-  #     MYSQL_DATABASE: smart_monitor
-  #   ports:
-  #     - "3306:3306"
-  #   volumes:
-  #     - mysql_data:/var/lib/mysql
-  #   healthcheck:
-  #     test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 5
-  #   restart: unless-stopped
-
   # Redis 缓存
   redis:
     image: redis:7-alpine
@@ -88,25 +12,76 @@ services:
     volumes:
       - redis_data:/data
     restart: unless-stopped
+    networks:
+      - milvus
+
+  # etcd（Milvus 依赖）
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    container_name: smart-monitor-etcd
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    volumes:
+      - etcd_data:/etcd
+    command: etcd -advertise-client-urls=http://etcd:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - milvus
+
+  # MinIO 对象存储（Milvus 依赖）
+  minio:
+    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    container_name: smart-monitor-minio
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    ports:
+      - "9000:9000"
+    volumes:
+      - minio_data:/minio_data
+    command: minio server /minio_data --console-address ":9000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - milvus
 
   # Milvus 向量数据库
   milvus:
-    image: milvusdb/milvus:v2.3.0
+    image: milvusdb/milvus:v2.4.0
     container_name: smart-monitor-milvus
     ports:
       - "19530:19530"
       - "9091:9091"
     volumes:
       - milvus_data:/var/lib/milvus
+    security_opt:
+      - seccomp:unconfined
     environment:
-      ETCD_USE_EMBED: "true"
-    command: milvus run standalone
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+    command: ["milvus", "run", "standalone"]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9091/health"]
-      interval: 10s
-      timeout: 5s
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      start_period: 90s
+      timeout: 20s
       retries: 5
-    restart: unless-stopped
+    depends_on:
+      etcd:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - milvus
 
   # Prometheus（可选，用于远程检测器）
   prometheus:
@@ -117,8 +92,15 @@ services:
     volumes:
       - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     restart: unless-stopped
+    networks:
+      - milvus
+
+networks:
+  milvus:
+    name: milvus
 
 volumes:
-  mysql_data:
   redis_data:
+  etcd_data:
+  minio_data:
   milvus_data:

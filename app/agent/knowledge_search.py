@@ -168,21 +168,25 @@ def _get_embedding_model():
     return _embedding_model
 
 
+async def _get_embedding_direct(text: str) -> list[float]:
+    """直接调用 vLLM embedding API，不走 LangChain（避免 tokenizer 问题）"""
+    import aiohttp
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            f"{config.embedding_api_base}/embeddings",
+            json={"input": text, "model": config.embedding_model},
+            timeout=aiohttp.ClientTimeout(total=10),
+        ) as resp:
+            data = await resp.json()
+            return data["data"][0]["embedding"]
+
+
 async def search_knowledge_vector(
     anomalies: list[dict],
     top_k: int = 5,
     max_chars: int = 3000,
 ) -> str:
-    """基于向量检索的知识库搜索
-
-    Args:
-        anomalies: 异常列表 [{detector, metric_name, severity, message, ...}]
-        top_k: 返回最相关的 top_k 个段落
-        max_chars: 最大返回字符数
-
-    Returns:
-        格式化的知识库文本
-    """
+    """基于向量检索的知识库搜索（LangChain 失败时自动降级到直调 API）"""
     if not anomalies:
         return ""
 
@@ -194,7 +198,6 @@ async def search_knowledge_vector(
         message = a.get("message", "")
         severity = a.get("severity", "")
 
-        # 构造描述性查询
         query = f"{detector} {metric} {message}".strip()
         if severity:
             query = f"{severity} {query}"
@@ -202,17 +205,23 @@ async def search_knowledge_vector(
 
     query_text = "，".join(query_parts)
 
-    # ② 向量化查询
+    # ② 向量化查询（先 LangChain，失败则直调用 vLLM API）
+    query_vector = None
     embeddings = _get_embedding_model()
-    if embeddings is None:
-        logger.warning("Embedding 模型不可用，降级到 TAG_INDEX")
-        return search_knowledge(anomalies)
+    if embeddings is not None:
+        try:
+            query_vector = await embeddings.aembed_query(query_text)
+        except Exception as e:
+            logger.warning(f"LangChain embedding 失败，改用直调 API: {e}")
 
-    try:
-        query_vector = await embeddings.aembed_query(query_text)
-    except Exception as e:
-        logger.error(f"查询向量化失败: {e}，降级到 TAG_INDEX")
-        return search_knowledge(anomalies)
+    # LangChain 失败时，用 aiohttp 直调 vLLM
+    if query_vector is None:
+        try:
+            query_vector = await _get_embedding_direct(query_text)
+            logger.info("Embedding 向量获取成功（直调 API）")
+        except Exception as e:
+            logger.warning(f"直调 API 也失败，降级到 TAG_INDEX: {e}")
+            return search_knowledge(anomalies)
 
     # ③ Milvus 检索
     milvus = _get_milvus_client()

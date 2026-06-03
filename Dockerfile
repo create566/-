@@ -1,45 +1,35 @@
 # 智能监控平台 - Dockerfile
 # 构建: docker build -t smart-monitor .
+# 运行: docker run -d -p 9900:9900 --add-host=host.docker.internal:host-gateway --env-file .env smart-monitor
 
 FROM python:3.11-slim
 
-# 防止 Python 字节码缓存
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# 工作目录
 WORKDIR /app
 
-# 安装系统依赖（for psutil, pymysql, langchain 等）
+# 系统依赖
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    libffi-dev \
-    libssl-dev \
+    gcc curl \
     && rm -rf /var/lib/apt/lists/*
 
-# 复制依赖文件
-COPY pyproject.toml ./
-
-# 安装 Python 依赖
-RUN pip install --no-cache-dir -e .
+# 安装 wheel 包（本地 vendor）
+COPY wheel/ ./wheel/
+RUN pip install --no-cache-dir wheel/lark_oapi-1.6.7-py3-none-any.whl
+RUN pip install --no-cache-dir fastapi uvicorn[standard] langgraph langchain-openai langchain-core pydantic pydantic-settings httpx loguru python-dotenv apscheduler psutil pymysql redis sqlalchemy aiomysql pymilvus prometheus-client pytest pytest-asyncio pytest-cov aiohttp milvus-lite
 
 # 复制应用代码
 COPY app/ ./app/
 COPY static/ ./static/
+COPY scripts/ ./scripts/
+COPY vendor/ ./vendor/
 
-# data 目录（如果不存在则跳过）
-RUN mkdir -p data || true
-
-# 创建非 root 用户
-RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
-USER appuser
+# 目录
+RUN mkdir -p data logs reports
 
 # 暴露端口
 EXPOSE 9900
 
-# 健康检查
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:9900/health || exit 1
-
-# 启动命令
+# 启动
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "9900"]

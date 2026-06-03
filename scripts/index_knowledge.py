@@ -47,19 +47,19 @@ def main():
     parser.add_argument(
         "--embedding-api-base",
         type=str,
-        default="http://localhost:11434/v1",
+        default="http://localhost:8011/v1",
         help="Embedding API 地址（OpenAI 兼容）",
     )
     parser.add_argument(
         "--embedding-model",
         type=str,
-        default="bge-large-zh-v1.5",
+        default="/models/BAAI/bge-small-zh-v1___5",
         help="Embedding 模型名称",
     )
     parser.add_argument(
         "--embedding-dim",
         type=int,
-        default=1024,
+        default=512,
         help="Embedding 向量维度",
     )
     parser.add_argument(

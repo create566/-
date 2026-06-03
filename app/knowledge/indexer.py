@@ -26,6 +26,9 @@ class KnowledgeIndexer:
         self.config = config
         self.milvus: Optional[MilvusKnowledgeBase] = None
         self.embeddings = None
+        self.embedding_api_base = config.embedding_api_base
+        self.embedding_model = config.embedding_model
+        self.dim = config.embedding_dim
 
     async def init(self):
         """初始化 Milvus 和 Embedding 模型"""
@@ -125,16 +128,25 @@ class KnowledgeIndexer:
 
     async def _index_batch(self, batch: List[Dict[str, Any]]):
         """索引一批段落"""
-        # 提取文本内容
-        texts = [p["content"] for p in batch]
+        # 提取文本内容，截断到 ~250 字符避免超出 embedding 模型的 512 token 限制
+        texts = [p["content"][:250] for p in batch]
 
-        # 向量化
-        try:
-            vectors = await self.embeddings.aembed_documents(texts)
-        except Exception as e:
-            logger.error(f"向量化失败: {e}")
-            # 降级：使用空向量（不推荐，仅用于测试）
-            vectors = [[0.0] * self.config.embedding_dim for _ in texts]
+        # 向量化 — 优先直调 vLLM API（绕过 LangChain tokenizer 兼容问题）
+        vectors = []
+        import aiohttp
+        for text in texts:
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        f"{self.embedding_api_base}/embeddings",
+                        json={"input": text, "model": self.embedding_model},
+                        timeout=aiohttp.ClientTimeout(total=15),
+                    ) as resp:
+                        data = await resp.json()
+                        vectors.append(data["data"][0]["embedding"])
+            except Exception as e:
+                logger.error(f"向量化失败: {e}")
+                vectors.append([0.0] * self.dim)
 
         # 组装插入数据
         for p, v in zip(batch, vectors):

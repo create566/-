@@ -1,7 +1,8 @@
-"""Milvus 向量数据库客户端 — 知识库检索封装"""
+"""Milvus 向量数据库客户端 — 支持 Docker 服务器 & Milvus Lite 本地模式"""
 
 from typing import List, Dict, Optional, Any
 from loguru import logger
+import os
 
 try:
     from pymilvus import MilvusClient
@@ -9,9 +10,14 @@ try:
 except ImportError:
     _milvus_available = False
 
+try:
+    import milvus_lite
+    _milvus_lite_available = True
+except ImportError:
+    _milvus_lite_available = False
+
 
 class MilvusKnowledgeBase:
-    """Milvus 知识库检索客户端"""
 
     def __init__(
         self,
@@ -20,6 +26,7 @@ class MilvusKnowledgeBase:
         collection: str = "knowledge_base",
         user: str = "",
         password: str = "",
+        use_lite: bool = True,
     ):
         if not _milvus_available:
             raise ImportError("pymilvus 未安装，请运行: pip install pymilvus")
@@ -29,10 +36,25 @@ class MilvusKnowledgeBase:
         self.collection = collection
         self.user = user
         self.password = password
+        self.use_lite = use_lite
 
-        uri = f"http://{host}:{port}"
-        self.client = MilvusClient(uri=uri)
-        logger.info(f"Milvus 客户端初始化: {uri}, collection={collection}")
+        if use_lite:
+            if not _milvus_lite_available:
+                raise ImportError("milvus-lite 未安装，请运行: pip install milvus-lite")
+            # Milvus Lite: URI 是本地文件路径
+            lite_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "data", "milvus_lite.db")
+            lite_path = os.path.abspath(lite_path)
+            logger.info(f"Milvus Lite 模式: {lite_path}")
+            self.client = MilvusClient(uri=lite_path)
+
+            # Milvus Lite 需要手动 load collection
+            if self.client.has_collection(collection_name=self.collection):
+                self.client.load_collection(collection_name=self.collection)
+                logger.info(f"Collection '{self.collection}' 已加载")
+        else:
+            uri = f"http://{host}:{port}"
+            logger.info(f"Milvus Docker 模式: {uri}")
+            self.client = MilvusClient(uri=uri)
 
     def has_collection(self) -> bool:
         """检查 collection 是否存在"""
@@ -58,21 +80,27 @@ class MilvusKnowledgeBase:
             dimension=dim,
             metric_type="COSINE",
             vector_field_name="content_vector",
-            id_type="varchar",
-            max_length=65535,
-            auto_id=False,
+            auto_id=True,
         )
         logger.info(f"Collection 创建成功: {self.collection}, dim={dim}")
 
-        # 创建索引
-        self.client.create_index(
-            collection_name=self.collection,
-            field_name="content_vector",
-            index_type="IVF_FLAT",
-            metric_type="COSINE",
-            params={"nlist": 128},
-        )
-        logger.info(f"索引创建成功: content_vector, IVF_FLAT, COSINE")
+        # Milvus Lite 需要加载 collection 才能搜索
+        if self.use_lite:
+            self.client.load_collection(collection_name=self.collection)
+
+        # Milvus Lite 不需要显式创建索引（默认 FLAT 暴力搜索）
+        if not self.use_lite:
+            try:
+                self.client.create_index(
+                    collection_name=self.collection,
+                    field_name="content_vector",
+                    index_type="FLAT",
+                    metric_type="COSINE",
+                    params={},
+                )
+                logger.info(f"索引创建成功: content_vector, FLAT, COSINE")
+            except Exception as e:
+                logger.warning(f"索引创建跳过（Milvus Lite 默认 FLAT）: {e}")
 
     def insert(self, data: List[Dict[str, Any]]) -> bool:
         """批量插入知识段落
@@ -214,8 +242,8 @@ class MilvusKnowledgeBase:
 _milvus_client: Optional[MilvusKnowledgeBase] = None
 
 
-def get_milvus_client() -> Optional[MilvusKnowledgeBase]:
-    """获取 Milvus 全局单例"""
+def get_milvus_client(use_lite: bool = True) -> Optional[MilvusKnowledgeBase]:
+    """获取 Milvus 全局单例（默认 Milvus Lite 本地模式）"""
     global _milvus_client
     if _milvus_client is None:
         try:
@@ -226,6 +254,7 @@ def get_milvus_client() -> Optional[MilvusKnowledgeBase]:
                 collection=config.milvus_collection,
                 user=config.milvus_user,
                 password=config.milvus_password,
+                use_lite=use_lite,
             )
         except Exception as e:
             logger.warning(f"Milvus 初始化失败: {e}")

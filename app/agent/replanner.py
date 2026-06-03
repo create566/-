@@ -11,7 +11,7 @@ from loguru import logger
 async def replanner(state: AgentState) -> dict:
     """综合判断：是否需要告警？是否需要深度诊断？还是出报告？"""
     # 用更快的模型生成报告，避免超时
-    llm = llm_factory.create_chat_model(temperature=0.3, streaming=False, timeout=45, max_tokens=2000)
+    llm = llm_factory.create_chat_model(temperature=0.3, streaming=False, timeout=45, max_tokens=800)
 
     phase = state.get("phase", "checking")
     results = state.get("results", [])
@@ -95,33 +95,24 @@ async def _generate_report(state: AgentState, llm, anomalies, results, history_t
 ## 专业知识库参考
 {knowledge_text}
 
-请生成一份完整的 Markdown 格式故障诊断报告，使用专业知识库中的专业术语和排查框架。报告必须包含：
+请用简洁专业的中文写一份故障诊断报告，格式如下（严格按此格式，不要重复内容）：
 
-### 1. 机器当前状态
-- 用表格列出所有检测指标及其当前值、阈值、状态（正常/警告/严重）
-- 标注异常指标
+## 告警摘要
+简要说明：哪个指标异常、严重程度（1-2句话）
 
-### 2. 告警摘要
-- 什么系统、什么指标异常、严重程度
+## 根因分析
+最可能的 1-2 个原因（引用知识库证据，每段不超过 3 行）
 
-### 3. 现象描述
-- 当前值、历史趋势、关联指标分析
-- 使用趋势数据判断是否是真正的故障（而非毛刺）
+## 处理建议
+3-5 条具体可执行的操作，按优先级排列
 
-### 4. 根因分析
-- 结合专业知识库中的常见原因，分析最可能的根因
-- 使用关联分析法（如: CPU高 + 慢查询暴增 → MySQL可能是根因）
-- 引用具体数据作为证据
+## 风险评估
+1 句话说明不处理会怎样
 
-### 5. 处理建议
-- 结合专业知识库中的排查步骤，给出具体可执行的操作
-- 按优先级排列（立即操作 / 短期措施 / 长期优化）
-
-### 6. 风险评估
-- 如果不处理会导致什么后果
-- 引用专业知识库中的影响分析
-
-直接输出完整 Markdown，不要 JSON 包装。语言专业、具体、可执行。"""
+⚠️ 重要：
+- 每个段落只说一次，严禁重复！
+- 总计不超过 500 字
+- 直接输出 Markdown"""
     try:
         resp = llm.invoke([HumanMessage(content=prompt)])
         report = resp.content if hasattr(resp, 'content') else str(resp)
