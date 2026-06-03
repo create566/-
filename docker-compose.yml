@@ -1,47 +1,35 @@
 # 智能监控平台 — Docker Compose
 # 启动: docker compose up -d
-#
-# 服务说明:
-#   app         — 主服务（FastAPI + 监控引擎）
-#   redis       — 缓存
-#   prometheus  — 指标采集（可选）
 
 services:
-  # 应用主服务
   app:
     build: .
     container_name: smart-monitor
     ports:
       - "9900:9900"
     environment:
-      # LLM — provider/key/model 从 .env，地址固定走宿主机
       - LLM_PROVIDER
       - LLM_API_KEY
       - LLM_API_BASE=http://host.docker.internal:8010/v1
       - LLM_MODEL
       - OLLAMA_MODEL
       - DASHSCOPE_MODEL
-      # Embedding
       - EMBEDDING_PROVIDER
       - EMBEDDING_API_KEY
       - EMBEDDING_API_BASE=http://host.docker.internal:8011/v1
       - EMBEDDING_MODEL
       - EMBEDDING_DIM
-      # 数据库 — 连宿主机 MySQL
       - DB_HOST=host.docker.internal
       - DB_PORT=3306
       - DB_USER=root
       - DB_PASSWORD=${DB_PASSWORD}
       - DB_NAME=${DB_NAME:-smart_monitor}
-      # Redis
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      # 飞书
       - FEISHU_ENABLED=${FEISHU_ENABLED:-False}
       - FEISHU_WEBHOOK_URL=${FEISHU_WEBHOOK_URL:-}
       - FEISHU_APP_ID=${FEISHU_APP_ID:-}
       - FEISHU_APP_SECRET=${FEISHU_APP_SECRET:-}
-      # 其他
       - API_KEY=${API_KEY:-change-me}
       - REPORT_DIR=./reports
     depends_on:
@@ -53,8 +41,6 @@ services:
       - ./reports:/app/reports
     restart: unless-stopped
 
-  # 数据库用本机 MySQL（已占用 3306，不重复启动）
-  # Redis 缓存
   redis:
     image: redis:7-alpine
     container_name: smart-monitor-redis
@@ -64,7 +50,6 @@ services:
       - redis_data:/data
     restart: unless-stopped
 
-  # Prometheus（可选）
   prometheus:
     image: prom/prometheus:latest
     container_name: smart-monitor-prometheus
@@ -76,4 +61,3 @@ services:
 
 volumes:
   redis_data:
-  mysql_data:
