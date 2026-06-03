@@ -24,12 +24,14 @@ COPY app/ ./app/
 COPY static/ ./static/
 COPY scripts/ ./scripts/
 COPY vendor/ ./vendor/
+COPY run_feishu_ws.py /app/run_feishu_ws.py
 
 # 目录
-RUN mkdir -p data logs reports
+COPY start.sh /app/start.sh
+RUN mkdir -p data logs reports && chmod +x /app/start.sh
 
 # 暴露端口
 EXPOSE 9900
 
-# 启动
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "9900"]
+# 启动（主服务 + 飞书 WS 双进程）
+CMD ["/app/start.sh"]

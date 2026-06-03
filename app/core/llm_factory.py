@@ -1,9 +1,10 @@
 """LLM 工厂类
 
 支持多种 LLM Provider：
-- vLLM: 高吞吐量，本地推理
+- vLLM: 本地高性能推理
 - Ollama: 本地模型推理
-- OpenAI: 云端模型（DeepSeek 等）
+- DashScope: 阿里云灵积（qwen-plus/max）
+- OpenAI: 兼容所有 OpenAI API（DeepSeek 等）
 """
 
 from langchain_openai import ChatOpenAI
@@ -12,12 +13,13 @@ from loguru import logger
 
 
 class LLMFactory:
-    """LLM 工厂类 — 支持 vLLM / Ollama / OpenAI"""
+    """LLM 工厂类 — 支持 vLLM / Ollama / DashScope / OpenAI"""
 
     PROVIDER_DEFAULTS = {
         "vllm": {"base_url": "http://localhost:8000/v1", "model": "Qwen2.5-7B-Instruct"},
         "ollama": {"base_url": "http://localhost:11434/v1", "model": "qwen2.5:7b"},
-        "openai": {"base_url": "https://api.deepseek.com", "model": "deepseek-v4-flash"},
+        "dashscope": {"base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "model": "qwen-plus"},
+        "openai": {"base_url": "https://api.deepseek.com", "model": "deepseek-chat"},
     }
 
     @staticmethod
@@ -31,24 +33,14 @@ class LLMFactory:
         max_tokens: int = 4096,
         provider: str | None = None,
     ) -> ChatOpenAI:
-        """创建 LLM 实例
-
-        Args:
-            model: 模型名称，默认使用配置
-            temperature: 温度参数
-            streaming: 是否启用流式
-            base_url: API 地址，默认使用配置
-            api_key: API Key，默认使用配置
-            timeout: 超时时间（秒）
-            max_tokens: 最大 token 数
-            provider: 提供商（vllm/ollama/openai），默认使用配置
-        """
+        """创建 LLM 实例"""
         provider = provider or config.llm_provider
         defaults = LLMFactory.PROVIDER_DEFAULTS.get(provider, {})
 
-        # 解析模型名称：Ollama 使用 ollama_model，其他使用 llm_model
         if provider == "ollama":
             model = model or config.ollama_model or defaults.get("model", "qwen2.5:7b")
+        elif provider == "dashscope":
+            model = model or config.dashscope_model or defaults.get("model", "qwen-plus")
         else:
             model = model or config.llm_model or defaults.get("model", "Qwen2.5-7B-Instruct")
 
@@ -64,7 +56,7 @@ class LLMFactory:
             request_timeout=timeout,
             max_tokens=max_tokens,
         )
-        logger.info(f"LLM 已创建: provider={provider}, model={model}, base_url={base_url}, timeout={timeout}s")
+        logger.info(f"LLM 已创建: provider={provider}, model={model}, base_url={base_url}")
         return llm
 
 
