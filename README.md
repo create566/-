@@ -1,4 +1,4 @@
-# 智能 OnCall 监控平台
+# 智能监控平台
 
 基于 Plan-Execute-Replan Agent 的全自动智能监控系统，支持 Milvus 向量检索、RAG 知识增强、飞书告警。
 
