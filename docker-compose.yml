@@ -1,8 +1,61 @@
-# 智能监控平台 - Docker Compose
-# 启动所有依赖服务
-# 用法: docker-compose up -d
+# 智能监控平台 — Docker Compose
+# 启动: docker compose up -d
+#
+# 服务说明:
+#   app         — 主服务（FastAPI + 监控引擎）
+#   redis       — 缓存
+#   prometheus  — 指标采集（可选）
 
 services:
+  # 应用主服务
+  app:
+    build: .
+    container_name: smart-monitor
+    ports:
+      - "9900:9900"
+    environment:
+      # LLM — 从 .env 读取（localhost 已通过 extra_hosts 映射到宿主机）
+      - LLM_PROVIDER
+      - LLM_API_KEY
+      - LLM_API_BASE
+      - LLM_MODEL
+      - OLLAMA_MODEL
+      - DASHSCOPE_MODEL
+      # Embedding
+      - EMBEDDING_PROVIDER
+      - EMBEDDING_API_KEY
+      - EMBEDDING_API_BASE
+      - EMBEDDING_MODEL
+      - EMBEDDING_DIM
+      # 数据库 — 连宿主机 MySQL
+      - DB_HOST=host.docker.internal
+      - DB_PORT=3306
+      - DB_USER=root
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME:-smart_monitor}
+      # Redis
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      # 飞书
+      - FEISHU_ENABLED=${FEISHU_ENABLED:-False}
+      - FEISHU_WEBHOOK_URL=${FEISHU_WEBHOOK_URL:-}
+      - FEISHU_APP_ID=${FEISHU_APP_ID:-}
+      - FEISHU_APP_SECRET=${FEISHU_APP_SECRET:-}
+      # 其他
+      - API_KEY=${API_KEY:-change-me}
+      - REPORT_DIR=./reports
+    depends_on:
+      redis:
+        condition: service_started
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./reports:/app/reports
+    extra_hosts:
+      - "localhost:host-gateway"
+    restart: unless-stopped
+
+  # 数据库用本机 MySQL（已占用 3306，不重复启动）
   # Redis 缓存
   redis:
     image: redis:7-alpine
@@ -12,78 +65,8 @@ services:
     volumes:
       - redis_data:/data
     restart: unless-stopped
-    networks:
-      - milvus
 
-  # etcd（Milvus 依赖）
-  etcd:
-    image: quay.io/coreos/etcd:v3.5.5
-    container_name: smart-monitor-etcd
-    environment:
-      - ETCD_AUTO_COMPACTION_MODE=revision
-      - ETCD_QUOTA_BACKEND_BYTES=4294967296
-      - ETCD_SNAPSHOT_COUNT=50000
-    volumes:
-      - etcd_data:/etcd
-    command: etcd -advertise-client-urls=http://etcd:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
-    healthcheck:
-      test: ["CMD", "etcdctl", "endpoint", "health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-    networks:
-      - milvus
-
-  # MinIO 对象存储（Milvus 依赖）
-  minio:
-    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
-    container_name: smart-monitor-minio
-    environment:
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin
-    ports:
-      - "9000:9000"
-    volumes:
-      - minio_data:/minio_data
-    command: minio server /minio_data --console-address ":9000"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-    networks:
-      - milvus
-
-  # Milvus 向量数据库
-  milvus:
-    image: milvusdb/milvus:v2.4.0
-    container_name: smart-monitor-milvus
-    ports:
-      - "19530:19530"
-      - "9091:9091"
-    volumes:
-      - milvus_data:/var/lib/milvus
-    security_opt:
-      - seccomp:unconfined
-    environment:
-      ETCD_ENDPOINTS: etcd:2379
-      MINIO_ADDRESS: minio:9000
-    command: ["milvus", "run", "standalone"]
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
-      interval: 30s
-      start_period: 90s
-      timeout: 20s
-      retries: 5
-    depends_on:
-      etcd:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-    networks:
-      - milvus
-
-  # Prometheus（可选，用于远程检测器）
+  # Prometheus（可选）
   prometheus:
     image: prom/prometheus:latest
     container_name: smart-monitor-prometheus
@@ -92,15 +75,7 @@ services:
     volumes:
       - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     restart: unless-stopped
-    networks:
-      - milvus
-
-networks:
-  milvus:
-    name: milvus
 
 volumes:
   redis_data:
-  etcd_data:
-  minio_data:
-  milvus_data:
+  mysql_data:
