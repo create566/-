@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 助手 · 智能监控平台</title>
+    <link rel="icon" href="data:,">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; background: #0b1120; color: #e2e8f0; height: 100vh; overflow: hidden; }
+
+        .app { display: flex; flex-direction: column; height: 100vh; }
+
+        /* Header */
+        .header { height: 52px; flex-shrink: 0; background: #0f172a; border-bottom: 1px solid #1e293b; display: flex; align-items: center; padding: 0 20px; gap: 12px; }
+        .header .back { color: #94a3b8; text-decoration: none; font-size: 13px; display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 8px; transition: all 0.15s; }
+        .header .back:hover { background: #1e293b; color: #e2e8f0; }
+        .header .divider { width: 1px; height: 24px; background: #1e293b; }
+        .header .title { font-size: 16px; font-weight: 700; color: #e2e8f0; display: flex; align-items: center; gap: 8px; }
+        .header .title .dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 6px #22c55e; }
+
+        /* Body */
+        .body { flex: 1; display: flex; overflow: hidden; }
+
+        /* Sidebar */
+        .sidebar { width: 240px; flex-shrink: 0; background: #0f172a; border-right: 1px solid #1e293b; display: flex; flex-direction: column; }
+        .sidebar-new {
+            display: flex; align-items: center; justify-content: center; gap: 6px;
+            margin: 14px 12px; padding: 10px 0; background: #1e293b; color: #e2e8f0;
+            border: 1px solid #334155; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer;
+            transition: all 0.15s;
+        }
+        .sidebar-new:hover { background: #334155; }
+        .sidebar-label { color: #475569; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; padding: 8px 16px 12px; border-bottom: 1px solid #1e293b; margin: 0 12px; }
+        .sessions { flex: 1; overflow-y: auto; padding: 8px 10px; }
+        .session-item {
+            padding: 10px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; color: #94a3b8;
+            display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; transition: all 0.15s;
+        }
+        .session-item:hover { background: #1e293b; color: #e2e8f0; }
+        .session-item.active { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; }
+        .session-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; margin-right: 8px; }
+        .session-time { font-size: 11px; color: #475569; flex-shrink: 0; }
+        .session-delete { visibility: hidden; width: 20px; height: 20px; border-radius: 5px; border: none; background: transparent; color: #ef4444; cursor: pointer; font-size: 14px; line-height: 1; flex-shrink: 0; margin-left: 4px; transition: all 0.15s; }
+        .session-item:hover .session-delete { visibility: visible; }
+        .session-delete:hover { background: #3b1010; }
+
+        /* Chat area */
+        .chat { flex: 1; display: flex; flex-direction: column; min-width: 0; background: #0b1120; }
+        .messages { flex: 1; overflow-y: auto; padding: 24px 32px; scroll-behavior: smooth; }
+
+        /* Welcome */
+        .welcome {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            height: 100%; min-height: 400px; text-align: center; padding: 40px 20px;
+        }
+        .welcome-icon { font-size: 64px; margin-bottom: 20px; animation: float 3s ease-in-out infinite; }
+        @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+        .welcome h2 { font-size: 24px; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+        .welcome p { color: #64748b; font-size: 15px; margin-bottom: 36px; max-width: 420px; line-height: 1.6; }
+        .quick-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; max-width: 480px; }
+        .quick-card {
+            display: flex; flex-direction: column; align-items: flex-start; text-align: left;
+            padding: 18px 20px; background: #0f172a; border: 1px solid #1e293b; border-radius: 14px;
+            cursor: pointer; transition: all 0.2s;
+        }
+        .quick-card:hover { border-color: #334155; background: #131f2e; transform: translateY(-1px); }
+        .quick-card .icon { font-size: 26px; margin-bottom: 8px; }
+        .quick-card .title { font-size: 14px; font-weight: 600; color: #e2e8f0; margin-bottom: 3px; }
+        .quick-card .desc { font-size: 12px; color: #64748b; }
+
+        /* Messages */
+        .msg { display: flex; margin-bottom: 24px; animation: msg-in 0.25s ease-out; }
+        @keyframes msg-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+        .msg-avatar { width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+        .msg-user { flex-direction: row-reverse; }
+        .msg-user .msg-avatar { background: #1e293b; margin-left: 12px; }
+        .msg-ai .msg-avatar { margin-right: 12px; }
+        .msg-body { display: flex; flex-direction: column; }
+        .msg-user .msg-body { align-items: flex-end; max-width: 70%; }
+        .msg-ai .msg-body { max-width: 85%; }
+
+        .msg-content { padding: 12px 16px; border-radius: 16px; font-size: 14px; line-height: 1.7; word-break: break-word; }
+        .msg-user .msg-content { background: #1e293b; color: #e2e8f0; border-bottom-right-radius: 6px; border: 1px solid #334155; }
+        .msg-ai .msg-content { background: transparent; color: #cbd5e1; padding: 0 0 0 4px; }
+        .msg-content h2 { font-size: 17px; margin: 10px 0 6px; color: #f1f5f9; }
+        .msg-content h3 { font-size: 15px; margin: 8px 0 4px; color: #e2e8f0; }
+        .msg-content strong { color: #f8fafc; }
+        .msg-content code { background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 5px; font-size: 13px; color: #f87171; }
+        .msg-content pre { background: #0f172a; border: 1px solid #1e293b; padding: 14px; border-radius: 10px; overflow-x: auto; margin: 8px 0; font-size: 13px; line-height: 1.6; }
+        .msg-time { font-size: 11px; color: #475569; margin-top: 4px; padding: 0 6px; }
+
+        .msg-actions { display: flex; gap: 6px; margin-top: 8px; padding-left: 4px; }
+        .msg-action {
+            padding: 4px 12px; border-radius: 14px; border: 1px solid #1e293b; background: #0f172a;
+            color: #64748b; font-size: 12px; cursor: pointer; transition: all 0.15s; display: flex; align-items: center; gap: 4px;
+        }
+        .msg-action:hover { background: #1e293b; color: #e2e8f0; }
+        .msg-action.done { background: #064e3b; color: #6ee7b7; border-color: #065f46; }
+
+        /* Typing */
+        .typing { display: flex; align-items: center; gap: 4px; padding: 16px 20px; }
+        .typing span { width: 6px; height: 6px; border-radius: 50%; background: #475569; animation: ty 1.4s ease-in-out infinite; }
+        .typing span:nth-child(2) { animation-delay: 0.2s; }
+        .typing span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes ty { 0%,60%,100% { transform: translateY(0); opacity: 0.4; } 30% { transform: translateY(-5px); opacity: 1; } }
+
+        /* Input */
+        .input-bar { display: flex; align-items: flex-end; gap: 10px; padding: 14px 24px 18px; border-top: 1px solid #1e293b; background: #0f172a; }
+        .input-bar textarea {
+            flex: 1; padding: 12px 18px; background: #0b1120; border: 1px solid #1e293b; border-radius: 14px;
+            color: #e2e8f0; font-size: 14px; resize: none; font-family: inherit; line-height: 1.55;
+            transition: border-color 0.2s; max-height: 160px;
+        }
+        .input-bar textarea:focus { border-color: #475569; outline: none; }
+        .input-bar textarea::placeholder { color: #475569; }
+        .send-btn {
+            width: 42px; height: 42px; flex-shrink: 0; border-radius: 12px; border: none;
+            background: #1e293b; color: #94a3b8; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; transition: all 0.15s;
+        }
+        .send-btn:hover { background: #334155; color: #e2e8f0; }
+        .send-btn:active { transform: scale(0.96); }
+
+        .sessions::-webkit-scrollbar, .messages::-webkit-scrollbar { width: 4px; }
+        .sessions::-webkit-scrollbar-track, .messages::-webkit-scrollbar-track { background: transparent; }
+        .sessions::-webkit-scrollbar-thumb, .messages::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 8px; }
+
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <header class="header">
+            <a href="/" class="back">← 返回控制台</a>
+            <div class="divider"></div>
+            <div class="title"><span class="dot"></span> 智能监控 AI 助手</div>
+        </header>
+
+        <div class="body">
+            <aside class="sidebar">
+                <button class="sidebar-new" onclick="newSession()">+ 新对话</button>
+                <div class="sidebar-label">历史会话</div>
+                <div class="sessions" id="session-list"></div>
+            </aside>
+
+            <main class="chat">
+                <div class="messages" id="messages">
+                    <div class="welcome">
+                        <div class="welcome-icon">🤖</div>
+                        <h2>你好，我是监控助手</h2>
+                        <p>我可以帮你查看监控状态、分析故障根因、生成诊断报告、提供处理建议</p>
+                        <div class="quick-cards">
+                            <button class="quick-card" onclick="quickSend('当前监控状态怎么样？')"><span class="icon">📊</span><span class="title">查看监控状态</span><span class="desc">了解所有系统运行情况</span></button>
+                            <button class="quick-card" onclick="quickSend('有哪些故障需要处理？')"><span class="icon">🚨</span><span class="title">查看故障列表</span><span class="desc">掌握当前告警和异常</span></button>
+                            <button class="quick-card" onclick="quickSend('最近系统健康趋势怎么样？')"><span class="icon">📈</span><span class="title">分析健康趋势</span><span class="desc">查看指标变化与诊断建议</span></button>
+                            <button class="quick-card" onclick="quickSend('帮我总结一下当前的整体情况')"><span class="icon">💡</span><span class="title">智能总结</span><span class="desc">AI 自动汇总关键信息</span></button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="input-bar">
+                    <textarea id="input" placeholder="输入你的问题，Enter 发送，Shift+Enter 换行..."
+                        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();send()}"
+                        oninput="this.style.height='';this.style.height=Math.min(this.scrollHeight,160)+'px'"></textarea>
+                    <button class="send-btn" onclick="send()" title="发送">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                    </button>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+    var API = '/api';
+    var API_KEY = 'smart-monitor-dev-key';
+    var sessionId = '';
+
+    function api(url, opts) {
+        opts = opts || {};
+        var h = opts.headers || {};
+        if (!h['X-API-Key']) h['X-API-Key'] = API_KEY;
+        return fetch(url, { method: opts.method || 'GET', headers: h, body: opts.body });
+    }
+
+    function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+    function timeAgo(iso) {
+        if (!iso) return '';
+        var diff = Date.now() - new Date(iso).getTime();
+        var s = Math.floor(diff/1000), m = Math.floor(s/60), h = Math.floor(m/60), d = Math.floor(h/24);
+        if (s < 60) return '刚刚';
+        if (m < 60) return m + '分钟前';
+        if (h < 24) return h + '小时前';
+        return d + '天前';
+    }
+
+    function md(str) {
+        var out = esc(str);
+        out = out.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+        out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
+        out = out.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+        out = out.replace(/^### (.+)/gm, '<h3>$1</h3>');
+        out = out.replace(/^## (.+)/gm, '<h2>$1</h2>');
+        out = out.replace(/^# (.+)/gm, '<h1>$1</h1>');
+        out = out.replace(/\n/g, '<br>');
+        return out;
+    }
+
+    function renderMsg(role, content) {
+        var el = document.getElementById('messages');
+        var w = el.querySelector('.welcome');
+        if (w) w.remove();
+
+        var div = document.createElement('div');
+        div.className = 'msg msg-' + (role === 'user' ? 'user' : 'ai');
+        var avatar = role === 'user' ? '👤' : '🤖';
+        var now = new Date();
+        var time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
+
+        var actions = '';
+        if (role === 'ai') {
+            actions = '<div class="msg-actions"><button class="msg-action" onclick="copyText(this,\'' + content.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\n/g,'\\n') + '\')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> 复制</button></div>';
+        }
+
+        div.innerHTML = '<div class="msg-avatar">'+avatar+'</div><div class="msg-body"><div class="msg-content">'+md(content)+'</div><div class="msg-time">'+time+'</div>'+actions+'</div>';
+        el.appendChild(div);
+        el.scrollTop = el.scrollHeight;
+    }
+
+    function showTyping() {
+        var el = document.getElementById('messages');
+        var w = el.querySelector('.welcome');
+        if (w) w.remove();
+        var div = document.createElement('div');
+        div.className = 'msg msg-ai';
+        div.id = 'typing';
+        div.innerHTML = '<div class="msg-avatar">🤖</div><div class="msg-body"><div class="msg-content"><div class="typing"><span></span><span></span><span></span></div></div></div>';
+        el.appendChild(div);
+        el.scrollTop = el.scrollHeight;
+        return div;
+    }
+
+    function hideTyping(el) { if (el && el.parentNode) el.remove(); }
+
+    async function send() {
+        var input = document.getElementById('input');
+        var text = input.value.trim();
+        if (!text) return;
+        input.value = '';
+        input.style.height = '';
+        renderMsg('user', text);
+
+        var typing = showTyping();
+        try {
+            var resp = await api(API + '/chat/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ session_id: sessionId, message: text })
+            });
+            var data = await resp.json();
+            hideTyping(typing);
+            if (data.data && data.data.success) {
+                sessionId = data.data.result.session_id;
+                renderMsg('ai', data.data.result.answer);
+                loadSessions();
+            } else {
+                renderMsg('ai', '抱歉，请求失败');
+            }
+        } catch(e) {
+            hideTyping(typing);
+            renderMsg('ai', '抱歉，请求失败: ' + e.message);
+        }
+    }
+
+    function quickSend(msg) {
+        document.getElementById('input').value = msg;
+        send();
+    }
+
+    function newSession() {
+        sessionId = '';
+        var el = document.getElementById('messages');
+        el.innerHTML = '<div class="welcome"><div class="welcome-icon">🤖</div><h2>你好，我是监控助手</h2><p>我可以帮你查看监控状态、分析故障根因、生成诊断报告、提供处理建议</p><div class="quick-cards"><button class="quick-card" onclick="quickSend(\'当前监控状态怎么样？\')"><span class="icon">📊</span><span class="title">查看监控状态</span><span class="desc">了解所有系统运行情况</span></button><button class="quick-card" onclick="quickSend(\'有哪些故障需要处理？\')"><span class="icon">🚨</span><span class="title">查看故障列表</span><span class="desc">掌握当前告警和异常</span></button><button class="quick-card" onclick="quickSend(\'最近系统健康趋势怎么样？\')"><span class="icon">📈</span><span class="title">分析健康趋势</span><span class="desc">查看指标变化与诊断建议</span></button><button class="quick-card" onclick="quickSend(\'帮我总结一下当前的整体情况\')"><span class="icon">💡</span><span class="title">智能总结</span><span class="desc">AI 自动汇总关键信息</span></button></div></div>';
+        loadSessions();
+    }
+
+    async function loadSessions() {
+        try {
+            var resp = await api(API + '/chat/sessions');
+            var data = await resp.json();
+            var sessions = (data.data && data.data.result && data.data.result.sessions) || [];
+            var html = '';
+            for (var i = 0; i < Math.min(sessions.length, 20); i++) {
+                var s = sessions[i];
+                html += '<div class="session-item' + (s.id === sessionId ? ' active' : '') + '" onclick="switchTo(\'' + s.id + '\')"><span>' + esc(s.title || '新会话') + '</span><span class="session-time">' + timeAgo(s.updated_at) + '</span><button class="session-delete" onclick="event.stopPropagation();deleteSession(\'' + s.id + '\')" title="删除">×</button></div>';
+            }
+            document.getElementById('session-list').innerHTML = html || '<div style="color:#475569;font-size:12px;padding:10px 14px;text-align:center">暂无会话</div>';
+        } catch(e) {}
+    }
+
+    async function switchTo(sid) {
+        sessionId = sid;
+        var el = document.getElementById('messages');
+        el.innerHTML = '';
+        var typing = showTyping();
+        try {
+            var resp = await api(API + '/chat/sessions/' + sid);
+            var data = await resp.json();
+            hideTyping(typing);
+            if (data.data && data.data.success) {
+                el.innerHTML = '';
+                var msgs = data.data.result.history || [];
+                for (var i = 0; i < msgs.length; i++) {
+                    renderMsg(msgs[i].role, msgs[i].content);
+                }
+            }
+        } catch(e) {
+            hideTyping(typing);
+            renderMsg('ai', '加载失败');
+        }
+        loadSessions();
+    }
+
+    async function deleteSession(sid) {
+        if (!confirm('确定删除这条对话记录吗？')) return;
+        try {
+            await api(API + '/chat/sessions/' + sid, { method: 'DELETE' });
+            if (sessionId === sid) { sessionId = ''; }
+            loadSessions();
+        } catch(e) {}
+    }
+
+    function copyText(btn, text) {
+        navigator.clipboard.writeText(text).then(function() {
+            btn.classList.add('done');
+            btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> 已复制';
+            setTimeout(function() { btn.classList.remove('done'); btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> 复制'; }, 1800);
+        }).catch(function(){});
+    }
+
+    loadSessions();
+    </script>
+</body>
+</html>

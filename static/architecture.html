@@ -1,0 +1,1035 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>智能监控平台 — 架构逻辑图</title>
+<style>
+/* ============================================================
+   CYBER OPERATIONS CENTER — 智能监控平台架构可视化
+   ============================================================ */
+:root {
+  --bg: #0a0e14;
+  --surface: #12171f;
+  --surface2: #181f2a;
+  --border: #1e293b;
+  --text: #c8d6e5;
+  --text-dim: #6b7c93;
+  --accent: #00e5ff;
+  --accent2: #00b8d4;
+  --warn: #ffab00;
+  --critical: #ff5252;
+  --success: #00e676;
+  --purple: #b388ff;
+  --orange: #ff9100;
+  --glow: 0 0 20px rgba(0,229,255,0.15);
+  --glow-strong: 0 0 40px rgba(0,229,255,0.25);
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  --font-sans: 'Inter', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  line-height: 1.6;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Grid background */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-image:
+    linear-gradient(rgba(0,229,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,229,255,0.03) 1px, transparent 1px);
+  background-size: 48px 48px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Scanline overlay */
+body::after {
+  content: '';
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.5;
+}
+
+.container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 24px;
+  position: relative;
+  z-index: 2;
+}
+
+/* ========== HEADER ========== */
+.header {
+  text-align: center;
+  padding: 40px 0 48px;
+  position: relative;
+}
+.header::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+}
+.header h1 {
+  font-family: var(--font-mono);
+  font-size: 2.2rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  background: linear-gradient(135deg, var(--accent), var(--purple));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 8px;
+}
+.header .subtitle {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+/* ========== STATUS BAR ========== */
+.status-bar {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 32px;
+}
+.status-chip {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.8rem;
+  font-family: var(--font-mono);
+}
+.status-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+.status-dot.ok { background: var(--success); box-shadow: 0 0 8px var(--success); }
+.status-dot.warn { background: var(--warn); box-shadow: 0 0 8px var(--warn); animation-delay: 0.5s; }
+.status-dot.crit { background: var(--critical); box-shadow: 0 0 8px var(--critical); animation-delay: 1s; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ========== SECTION (Collapsible) ========== */
+.section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin-bottom: 20px;
+  overflow: hidden;
+  transition: box-shadow 0.3s;
+}
+.section:hover {
+  box-shadow: var(--glow);
+}
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  cursor: pointer;
+  user-select: none;
+  background: linear-gradient(180deg, var(--surface2), var(--surface));
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.3s;
+}
+.section.open .section-header {
+  border-bottom-color: var(--border);
+}
+.section-header-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.section-icon {
+  width: 36px; height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+}
+.section-icon.agent { background: rgba(0,229,255,0.12); color: var(--accent); }
+.section-icon.alert { background: rgba(255,82,82,0.12); color: var(--critical); }
+.section-icon.knowledge { background: rgba(179,136,255,0.12); color: var(--purple); }
+.section-icon.comm { background: rgba(255,171,0,0.12); color: var(--warn); }
+.section-icon.detector { background: rgba(0,230,118,0.12); color: var(--success); }
+.section-icon.overview { background: rgba(255,145,0,0.12); color: var(--orange); }
+
+.section-title {
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.04em;
+}
+.section-badge {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  padding: 3px 10px;
+  border-radius: 20px;
+  background: rgba(0,229,255,0.08);
+  color: var(--accent);
+  border: 1px solid rgba(0,229,255,0.2);
+}
+.section-arrow {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  transition: transform 0.3s;
+}
+.section.open .section-arrow { transform: rotate(180deg); }
+
+.section-body {
+  display: none;
+  padding: 24px;
+}
+.section.open .section-body {
+  display: block;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ========== FLOW DIAGRAM ========== */
+.flow-h {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-wrap: wrap;
+  justify-content: center;
+  padding: 16px 0;
+}
+.flow-v {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+.flow-node {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 20px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  min-width: 100px;
+  position: relative;
+  transition: all 0.25s;
+}
+.flow-node:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 16px rgba(0,229,255,0.12);
+  transform: translateY(-2px);
+}
+.flow-node .node-icon { font-size: 1.4rem; margin-bottom: 4px; }
+.flow-node .node-label { font-weight: 600; color: #fff; }
+.flow-node .node-desc { font-size: 0.65rem; color: var(--text-dim); margin-top: 2px; }
+
+.flow-arrow {
+  color: var(--accent);
+  font-size: 1.3rem;
+  margin: 0 8px;
+  animation: arrowPulse 1.6s infinite;
+}
+@keyframes arrowPulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+.flow-arrow-down {
+  color: var(--accent);
+  font-size: 1rem;
+  margin: 2px 0;
+}
+
+/* Node style variants */
+.node-start { border-color: rgba(0,230,118,0.5); background: rgba(0,230,118,0.06); }
+.node-end { border-color: rgba(255,82,82,0.5); background: rgba(255,82,82,0.06); }
+.node-agent { border-color: rgba(0,229,255,0.5); background: rgba(0,229,255,0.06); }
+.node-decision { border-radius: 50%; width: 72px; height: 72px; padding: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; border-color: rgba(255,171,0,0.6); background: rgba(255,171,0,0.08); }
+.node-decision .node-label { font-size: 0.65rem; }
+
+/* ========== CARD GRID ========== */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+.detector-card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px 20px;
+  transition: all 0.25s;
+  cursor: default;
+}
+.detector-card:hover {
+  border-color: var(--accent);
+  box-shadow: var(--glow);
+  transform: translateY(-2px);
+}
+.detector-card .card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.detector-card .card-icon {
+  width: 40px; height: 40px;
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.2rem;
+}
+.detector-card .card-icon.local { background: rgba(0,230,118,0.12); color: var(--success); }
+.detector-card .card-icon.remote { background: rgba(179,136,255,0.12); color: var(--purple); }
+.detector-card .card-name {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: #fff;
+}
+.detector-card .card-metric {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--accent);
+}
+.detector-card .card-desc {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
+.detector-card .card-thresholds {
+  display: flex;
+  gap: 12px;
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+}
+.card-thresholds .thresh-warn { color: var(--warn); }
+.card-thresholds .thresh-crit { color: var(--critical); }
+.card-thresholds span { background: var(--surface); padding: 2px 8px; border-radius: 4px; }
+
+/* ========== RAG LAYERS ========== */
+.layers {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.layer {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 18px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  transition: all 0.25s;
+}
+.layer:hover { border-color: var(--accent); }
+.layer-num {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+.layer-num.l1 { background: rgba(0,229,255,0.15); color: var(--accent); }
+.layer-num.l2 { background: rgba(179,136,255,0.15); color: var(--purple); }
+.layer-num.l3 { background: rgba(255,171,0,0.15); color: var(--warn); }
+
+.layer-info { flex: 1; }
+.layer-info .layer-title { font-weight: 600; font-size: 0.85rem; color: #fff; }
+.layer-info .layer-desc { font-size: 0.72rem; color: var(--text-dim); }
+.layer-status {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  padding: 4px 12px;
+  border-radius: 20px;
+}
+.layer-status.primary { background: rgba(0,229,255,0.1); color: var(--accent); border: 1px solid rgba(0,229,255,0.2); }
+.layer-status.fallback { background: rgba(179,136,255,0.1); color: var(--purple); border: 1px solid rgba(179,136,255,0.2); }
+.layer-status.last { background: rgba(255,171,0,0.1); color: var(--warn); border: 1px solid rgba(255,171,0,0.2); }
+
+/* ========== DUAL CHANNEL ========== */
+.dual-channel {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+.channel {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+}
+.channel h4 {
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  margin-bottom: 14px;
+  display: flex; align-items: center; gap: 8px;
+}
+.channel-arrow-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.channel-arrow-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  font-family: var(--font-mono);
+  padding: 6px 10px;
+  background: var(--surface);
+  border-radius: 6px;
+}
+.channel-arrow-list .arrow-sym { color: var(--accent); font-size: 0.7rem; }
+
+/* ========== OVERVIEW MAP ========== */
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+}
+.overview-block {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+}
+.overview-block .block-icon { font-size: 1.8rem; margin-bottom: 6px; }
+.overview-block .block-name { font-family: var(--font-mono); font-size: 0.78rem; font-weight: 600; color: #fff; }
+.overview-block .block-conn { font-size: 0.65rem; color: var(--text-dim); margin-top: 4px; }
+
+.overview-arrow-row {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0;
+  color: var(--accent);
+  font-size: 1.2rem;
+  gap: 60px;
+}
+
+/* ========== RESPONSIVE ========== */
+@media (max-width: 768px) {
+  .header h1 { font-size: 1.4rem; }
+  .flow-h { flex-direction: column; gap: 8px; }
+  .flow-arrow { transform: rotate(90deg); margin: 0; }
+  .dual-channel { grid-template-columns: 1fr; }
+  .card-grid { grid-template-columns: 1fr; }
+}
+
+/* ========== TOOLTIP ========== */
+[data-tip] { position: relative; cursor: help; }
+[data-tip]:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: 120%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #000;
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  white-space: nowrap;
+  z-index: 10;
+  border: 1px solid var(--border);
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- ====== HEADER ====== -->
+  <div class="header">
+    <h1>⚙️ 智能监控平台 · 架构逻辑</h1>
+    <p class="subtitle">Smart Monitor — Architecture &amp; Data Flow Visualization</p>
+  </div>
+
+  <!-- ====== STATUS BAR ====== -->
+  <div class="status-bar">
+    <div class="status-chip"><span class="status-dot ok"></span> LLM 已连接</div>
+    <div class="status-chip"><span class="status-dot ok"></span> Milvus 向量库就绪</div>
+    <div class="status-chip"><span class="status-dot ok"></span> MySQL 已连接</div>
+    <div class="status-chip"><span class="status-dot warn"></span> Redis 7 运行中</div>
+    <div class="status-chip"><span class="status-dot ok"></span> Prometheus 已接入</div>
+    <div class="status-chip"><span class="status-dot crit"></span> 飞书 Webhook 已激活</div>
+  </div>
+
+  <!-- ====== 一、系统全景架构 ====== -->
+  <div class="section open">
+    <div class="section-header" onclick="toggleSection(this)">
+      <div class="section-header-left">
+        <div class="section-icon overview">🏗️</div>
+        <span class="section-title">一、系统全景架构</span>
+        <span class="section-badge">Overview</span>
+      </div>
+      <span class="section-arrow">▼</span>
+    </div>
+    <div class="section-body">
+      <div class="overview-grid">
+        <div class="overview-block">
+          <div class="block-icon">🖥️</div>
+          <div class="block-name">Web 管理端</div>
+          <div class="block-conn">static/index.html<br>仪表盘 · 注册 · 历史</div>
+        </div>
+        <div class="overview-block">
+          <div class="block-icon">🤖</div>
+          <div class="block-name">飞书机器人</div>
+          <div class="block-conn">WebSocket 独立进程<br>@机器人 命令交互</div>
+        </div>
+        <div class="overview-block">
+          <div class="block-icon">🔌</div>
+          <div class="block-name">REST API</div>
+          <div class="block-conn">FastAPI :9900<br>认证中间件</div>
+        </div>
+        <div class="overview-block">
+          <div class="block-icon">🧠</div>
+          <div class="block-name">LangGraph Agent</div>
+          <div class="block-conn">Plan → Execute<br>→ Replan</div>
+        </div>
+        <div class="overview-block">
+          <div class="block-icon">⏱️</div>
+          <div class="block-name">调度引擎</div>
+          <div class="block-conn">APScheduler<br>Interval / Cron</div>
+        </div>
+        <div class="overview-block">
+          <div class="block-icon">📡</div>
+          <div class="block-name">8 种检测器</div>
+          <div class="block-conn">本地 4 + 远程 4<br>自动注册</div>
+        </div>
+        <div class="overview-block">
+          <div class="block-icon">📚</div>
+          <div class="block-name">知识库 RAG</div>
+          <div class="block-conn">Milvus 向量检索<br>7篇专业知识文档</div>
+        </div>
+        <div class="overview-block">
+          <div class="block-icon">📢</div>
+          <div class="block-name">飞书通知</div>
+          <div class="block-conn">Webhook 卡片推送<br>Markdown 诊断报告</div>
+        </div>
+      </div>
+
+      <!-- Connection arrows between blocks -->
+      <div style="text-align:center; padding: 16px 0;">
+        <div style="display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;font-family:var(--font-mono);font-size:0.72rem;color:var(--text-dim);">
+          <span>用户请求</span>
+          <span style="color:var(--accent);">→</span>
+          <span style="color:var(--accent);">API 网关 + 认证</span>
+          <span style="color:var(--accent);">→</span>
+          <span style="color:var(--purple);">调度器定时触发</span>
+          <span style="color:var(--accent);">→</span>
+          <span style="color:var(--accent2);">Agent 编排检测</span>
+          <span style="color:var(--accent);">→</span>
+          <span style="color:var(--success);">检测器执行 + RAG</span>
+          <span style="color:var(--accent);">→</span>
+          <span style="color:var(--warn);">飞书推送 + 入库</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== 二、Agent Plan-Execute-Replan 流程 ====== -->
+  <div class="section open">
+    <div class="section-header" onclick="toggleSection(this)">
+      <div class="section-header-left">
+        <div class="section-icon agent">🔄</div>
+        <span class="section-title">二、Agent Plan-Execute-Replan 决策流程</span>
+        <span class="section-badge">LangGraph</span>
+      </div>
+      <span class="section-arrow">▼</span>
+    </div>
+    <div class="section-body">
+      <!-- Main flow -->
+      <div class="flow-v">
+        <div class="flow-node node-start">
+          <div class="node-label">🚀 START</div>
+          <div class="node-desc">系统触发检测</div>
+        </div>
+        <span class="flow-arrow-down">▼</span>
+        <div class="flow-node node-agent">
+          <div class="node-icon">📋</div>
+          <div class="node-label">Planner 规划器</div>
+          <div class="node-desc">LLM 制定检测/诊断计划<br>≤3检测器→直接排序 | >3→LLM优化优先级</div>
+        </div>
+        <span class="flow-arrow-down">▼</span>
+
+        <!-- Executor loop -->
+        <div style="border:1px dashed rgba(0,229,255,0.3); border-radius:12px; padding:16px; margin:8px 0; background:rgba(0,229,255,0.02);">
+          <div style="text-align:center;font-family:var(--font-mono);font-size:0.7rem;color:var(--accent);margin-bottom:10px;">🔄 循环：逐步执行计划中的每一步</div>
+          <div class="flow-h">
+            <div class="flow-node node-agent">
+              <div class="node-icon">⚡</div>
+              <div class="node-label">Executor 执行器</div>
+              <div class="node-desc">从注册中心获取检测器实例<br>调用 detector.check()<br>收集结果 → 异常自动入列</div>
+            </div>
+            <span class="flow-arrow">→</span>
+            <div class="flow-node node-decision">
+              <div class="node-label">还有步骤?</div>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:center;gap:120px;margin-top:8px;">
+            <span style="font-family:var(--font-mono);font-size:0.7rem;color:var(--success);">✅ YES → 继续下一步</span>
+            <span style="font-family:var(--font-mono);font-size:0.7rem;color:var(--critical);">⏹️ NO → 全部执行完</span>
+          </div>
+        </div>
+
+        <span class="flow-arrow-down">▼</span>
+        <div class="flow-node node-agent">
+          <div class="node-icon">🔍</div>
+          <div class="node-label">Replanner 复盘器</div>
+          <div class="node-desc">① 毛刺过滤(本地规则)<br>② 知识库RAG检索(Milvus→TAG_INDEX)<br>③ LLM生成Markdown诊断报告</div>
+        </div>
+        <span class="flow-arrow-down">▼</span>
+        <div class="flow-node node-decision">
+          <div class="node-label">有结论?</div>
+        </div>
+        <div style="display:flex;gap:60px;margin-top:8px;font-family:var(--font-mono);font-size:0.75rem;">
+          <span style="color:var(--accent);">🔄 信息不足 → 回到 Planner (深度诊断)</span>
+          <span style="color:var(--success);">✅ 有结论 → END (输出报告)</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== 三、告警管道数据流 ====== -->
+  <div class="section">
+    <div class="section-header" onclick="toggleSection(this)">
+      <div class="section-header-left">
+        <div class="section-icon alert">🚨</div>
+        <span class="section-title">三、告警管道 (AlertPipeline) 完整数据流</span>
+        <span class="section-badge">Pipeline</span>
+      </div>
+      <span class="section-arrow">▼</span>
+    </div>
+    <div class="section-body">
+      <div class="flow-h">
+        <div class="flow-node">
+          <div class="node-icon">⏰</div>
+          <div class="node-label">定时触发</div>
+          <div class="node-desc">每 N 秒 (APScheduler)</div>
+        </div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-node">
+          <div class="node-icon">🛡️</div>
+          <div class="node-label">冷却检查</div>
+          <div class="node-desc">60s窗口内不重复</div>
+        </div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-node">
+          <div class="node-icon">📜</div>
+          <div class="node-label">加载历史</div>
+          <div class="node-desc">最近60条检测记录</div>
+        </div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-node node-agent">
+          <div class="node-icon">🧠</div>
+          <div class="node-label">Agent 检测</div>
+          <div class="node-desc">Plan→Execute→Replan</div>
+        </div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-node node-decision">
+          <div class="node-label">异常?</div>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:center;gap:120px;margin-top:12px;">
+        <div style="text-align:center;">
+          <span style="font-family:var(--font-mono);font-size:0.75rem;color:var(--success);">✅ 正常</span>
+          <div style="font-size:0.68rem;color:var(--text-dim);">健康分 +5 → 结束</div>
+        </div>
+        <div style="text-align:center;">
+          <span style="font-family:var(--font-mono);font-size:0.75rem;color:var(--critical);">🔴 异常</span>
+        </div>
+      </div>
+
+      <div class="flow-h" style="margin-top:10px;">
+        <div class="flow-node">
+          <div class="node-icon">📤</div>
+          <div class="node-label">飞书推送</div>
+          <div class="node-desc">Markdown卡片消息</div>
+        </div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-node">
+          <div class="node-icon">📉</div>
+          <div class="node-label">扣健康分</div>
+          <div class="node-desc">critical -20 / warning -10</div>
+        </div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-node">
+          <div class="node-icon">💾</div>
+          <div class="node-label">保存故障</div>
+          <div class="node-desc">incidents.json/MySQL<br>reports/incident_*.md</div>
+        </div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-node node-end">
+          <div class="node-label">⏹️ DONE</div>
+          <div class="node-desc">等待下次触发</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== 四、知识库 RAG 三层降级 ====== -->
+  <div class="section">
+    <div class="section-header" onclick="toggleSection(this)">
+      <div class="section-header-left">
+        <div class="section-icon knowledge">📚</div>
+        <span class="section-title">四、知识库 RAG 三层降级检索</span>
+        <span class="section-badge">Milvus + TAG_INDEX</span>
+      </div>
+      <span class="section-arrow">▼</span>
+    </div>
+    <div class="section-body">
+      <div style="text-align:center;margin-bottom:16px;">
+        <div class="flow-node" style="display:inline-block;">
+          <div class="node-icon">🔍</div>
+          <div class="node-label">异常指标 → 构建查询文本</div>
+          <div class="node-desc">"critical local_cpu cpu_usage CPU使用率 85%"</div>
+        </div>
+      </div>
+
+      <div class="layers">
+        <div class="layer">
+          <div class="layer-num l1">①</div>
+          <div class="layer-info">
+            <div class="layer-title">Milvus 向量检索（首选）</div>
+            <div class="layer-desc">Embedding模型向量化查询 → Milvus.search(top_k=5) → 按段落类型分类返回（告警信息/排查步骤/根因分析/处理方案/紧急处理/验证步骤）</div>
+          </div>
+          <div class="layer-status primary">PRIMARY</div>
+        </div>
+
+        <div class="layer">
+          <div class="layer-num l2">②</div>
+          <div class="layer-info">
+            <div class="layer-title">TAG_INDEX 关键词匹配（降级）</div>
+            <div class="layer-desc">30+ 预定义关键词映射：cpu→cpu_high_usage.md, 内存→memory_high_usage.md, mysql→mysql_slow_query.md, 超时→slow_response.md...</div>
+          </div>
+          <div class="layer-status fallback">FALLBACK</div>
+        </div>
+
+        <div class="layer">
+          <div class="layer-num l3">③</div>
+          <div class="layer-info">
+            <div class="layer-title">返回空（兜底）</div>
+            <div class="layer-desc">"（暂无相关知识库参考）" — LLM 仅基于检测数据自行生成诊断报告</div>
+          </div>
+          <div class="layer-status last">LAST RESORT</div>
+        </div>
+      </div>
+
+      <div style="margin-top:16px;padding:12px 16px;background:var(--surface2);border-radius:8px;border-left:3px solid var(--accent);">
+        <div style="font-family:var(--font-mono);font-size:0.72rem;color:var(--accent);">📖 知识库文档分布</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">
+          <span style="font-size:0.68rem;background:var(--surface);padding:3px 10px;border-radius:4px;">cpu_high_usage.md</span>
+          <span style="font-size:0.68rem;background:var(--surface);padding:3px 10px;border-radius:4px;">memory_high_usage.md</span>
+          <span style="font-size:0.68rem;background:var(--surface);padding:3px 10px;border-radius:4px;">disk_high_usage.md</span>
+          <span style="font-size:0.68rem;background:var(--surface);padding:3px 10px;border-radius:4px;">mysql_slow_query.md</span>
+          <span style="font-size:0.68rem;background:var(--surface);padding:3px 10px;border-radius:4px;">redis_memory_high.md</span>
+          <span style="font-size:0.68rem;background:var(--surface);padding:3px 10px;border-radius:4px;">service_unavailable.md</span>
+          <span style="font-size:0.68rem;background:var(--surface);padding:3px 10px;border-radius:4px;">slow_response.md</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== 五、飞书双通道交互 ====== -->
+  <div class="section">
+    <div class="section-header" onclick="toggleSection(this)">
+      <div class="section-header-left">
+        <div class="section-icon comm">💬</div>
+        <span class="section-title">五、飞书双通道交互</span>
+        <span class="section-badge">Webhook + WebSocket</span>
+      </div>
+      <span class="section-arrow">▼</span>
+    </div>
+    <div class="section-body">
+      <div class="dual-channel">
+        <!-- Channel 1: Webhook -->
+        <div class="channel" style="border-left:3px solid var(--critical);">
+          <h4>📤 通道① Webhook（被动推送）</h4>
+          <ul class="channel-arrow-list">
+            <li><span class="arrow-sym">→</span> AlertPipeline 检测到异常</li>
+            <li><span class="arrow-sym">→</span> FeishuNotifier.send_markdown()</li>
+            <li><span class="arrow-sym">→</span> POST 飞书 Webhook URL</li>
+            <li><span class="arrow-sym">→</span> 群聊收到 Markdown 卡片消息</li>
+            <li style="color:var(--text-dim);font-size:0.68rem;padding-left:16px;">
+              📋 内容：异常指标表格 + 诊断摘要<br>
+              🔴/🟡 标题颜色区分严重程度<br>
+              自动去重过滤重复内容
+            </li>
+          </ul>
+        </div>
+
+        <!-- Channel 2: WebSocket -->
+        <div class="channel" style="border-left:3px solid var(--accent);">
+          <h4>📥 通道② WebSocket（主动交互）</h4>
+          <ul class="channel-arrow-list">
+            <li><span class="arrow-sym">→</span> 独立进程 run_feishu_ws.py</li>
+            <li><span class="arrow-sym">→</span> lark_oapi WS Client 长连接</li>
+            <li><span class="arrow-sym">→</span> 监听 @机器人 消息事件</li>
+            <li><span class="arrow-sym">→</span> 清洗 @标签 → 提取纯文本命令</li>
+            <li><span class="arrow-sym">→</span> POST /api/feishu/handle → 命令分发</li>
+            <li style="color:var(--text-dim);font-size:0.68rem;padding-left:16px;">
+              🤖 状态 · 查询 · 检测 · 故障 · 报告 · 趋势<br>
+              ⚙️ 暂停 · 恢复 · 帮助 · 自由对话(LLM)
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== 六、检测器矩阵 ====== -->
+  <div class="section">
+    <div class="section-header" onclick="toggleSection(this)">
+      <div class="section-header-left">
+        <div class="section-icon detector">🔧</div>
+        <span class="section-title">六、8 种检测器矩阵</span>
+        <span class="section-badge">Detectors</span>
+      </div>
+      <span class="section-arrow">▼</span>
+    </div>
+    <div class="section-body">
+      <div class="card-grid">
+        <!-- Local detectors -->
+        <div class="detector-card">
+          <div class="card-head">
+            <div class="card-icon local">🌐</div>
+            <div>
+              <div class="card-name">http_health</div>
+              <div class="card-metric">http_status</div>
+            </div>
+          </div>
+          <div class="card-desc">HTTP 健康端点检测 — 检查 /health 返回 2xx</div>
+          <div class="card-thresholds">
+            <span>🏠 本地</span>
+            <span class="thresh-crit">非2xx→严重</span>
+          </div>
+        </div>
+
+        <div class="detector-card">
+          <div class="card-head">
+            <div class="card-icon local">💻</div>
+            <div>
+              <div class="card-name">local_cpu</div>
+              <div class="card-metric">cpu_usage_percent</div>
+            </div>
+          </div>
+          <div class="card-desc">本机 CPU 使用率检测 — psutil.cpu_percent()</div>
+          <div class="card-thresholds">
+            <span>🏠 本地</span>
+            <span class="thresh-warn">警告 &gt;60%</span>
+            <span class="thresh-crit">严重 &gt;80%</span>
+          </div>
+        </div>
+
+        <div class="detector-card">
+          <div class="card-head">
+            <div class="card-icon local">🧠</div>
+            <div>
+              <div class="card-name">local_memory</div>
+              <div class="card-metric">memory_usage_percent</div>
+            </div>
+          </div>
+          <div class="card-desc">本机内存使用率检测 — psutil.virtual_memory()</div>
+          <div class="card-thresholds">
+            <span>🏠 本地</span>
+            <span class="thresh-warn">警告 &gt;70%</span>
+            <span class="thresh-crit">严重 &gt;85%</span>
+          </div>
+        </div>
+
+        <div class="detector-card">
+          <div class="card-head">
+            <div class="card-icon local">💾</div>
+            <div>
+              <div class="card-name">local_disk</div>
+              <div class="card-metric">disk_usage_percent</div>
+            </div>
+          </div>
+          <div class="card-desc">本机磁盘使用率检测 — shutil.disk_usage()</div>
+          <div class="card-thresholds">
+            <span>🏠 本地</span>
+            <span class="thresh-warn">警告 &gt;75%</span>
+            <span class="thresh-crit">严重 &gt;90%</span>
+          </div>
+        </div>
+
+        <!-- Remote detectors -->
+        <div class="detector-card">
+          <div class="card-head">
+            <div class="card-icon remote">📊</div>
+            <div>
+              <div class="card-name">prometheus_cpu</div>
+              <div class="card-metric">cpu_usage_percent</div>
+            </div>
+          </div>
+          <div class="card-desc">PromQL 查询远程服务器 CPU 使用率</div>
+          <div class="card-thresholds">
+            <span>☁️ 远程</span>
+            <span class="thresh-warn">警告 &gt;60%</span>
+            <span class="thresh-crit">严重 &gt;80%</span>
+          </div>
+        </div>
+
+        <div class="detector-card">
+          <div class="card-head">
+            <div class="card-icon remote">📈</div>
+            <div>
+              <div class="card-name">prometheus_memory</div>
+              <div class="card-metric">memory_usage_percent</div>
+            </div>
+          </div>
+          <div class="card-desc">PromQL 查询远程服务器内存使用率</div>
+          <div class="card-thresholds">
+            <span>☁️ 远程</span>
+            <span class="thresh-warn">警告 &gt;70%</span>
+            <span class="thresh-crit">严重 &gt;85%</span>
+          </div>
+        </div>
+
+        <div class="detector-card">
+          <div class="card-head">
+            <div class="card-icon remote">🗄️</div>
+            <div>
+              <div class="card-name">mysql_slow_queries</div>
+              <div class="card-metric">slow_queries_count</div>
+            </div>
+          </div>
+          <div class="card-desc">pymysql 直连查询 SHOW GLOBAL STATUS</div>
+          <div class="card-thresholds">
+            <span>☁️ 远程</span>
+            <span class="thresh-warn">警告 &gt;10</span>
+            <span class="thresh-crit">严重 &gt;50</span>
+          </div>
+        </div>
+
+        <div class="detector-card">
+          <div class="card-head">
+            <div class="card-icon remote">🔴</div>
+            <div>
+              <div class="card-name">redis_memory</div>
+              <div class="card-metric">redis_memory_percent</div>
+            </div>
+          </div>
+          <div class="card-desc">redis-py INFO memory — 含连接数监控</div>
+          <div class="card-thresholds">
+            <span>☁️ 远程</span>
+            <span class="thresh-warn">警告 &gt;70%</span>
+            <span class="thresh-crit">严重 &gt;85%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== 七、系统生命周期状态机 ====== -->
+  <div class="section">
+    <div class="section-header" onclick="toggleSection(this)">
+      <div class="section-header-left">
+        <div class="section-icon overview">🔄</div>
+        <span class="section-title">七、系统生命周期 &amp; 健康分机制</span>
+        <span class="section-badge">Lifecycle</span>
+      </div>
+      <span class="section-arrow">▼</span>
+    </div>
+    <div class="section-body">
+      <div class="flow-h">
+        <div class="flow-node node-start">
+          <div class="node-icon">📝</div>
+          <div class="node-label">注册系统</div>
+          <div class="node-desc">POST /api/systems</div>
+        </div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-node" style="border-color:rgba(0,230,118,0.6);">
+          <div class="node-icon">🟢</div>
+          <div class="node-label">active · 运行中</div>
+          <div class="node-desc">定时检测中<br>健康分 0~100</div>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:center;gap:60px;margin-top:10px;">
+        <div style="text-align:center;">
+          <span style="color:var(--warn);">⏸️</span>
+          <span style="font-family:var(--font-mono);font-size:0.72rem;">暂停 → paused</span>
+          <div style="font-size:0.65rem;color:var(--text-dim);">停止调度，保留配置</div>
+        </div>
+        <div style="text-align:center;">
+          <span style="color:var(--accent);">▶️</span>
+          <span style="font-family:var(--font-mono);font-size:0.72rem;">恢复 → active</span>
+          <div style="font-size:0.65rem;color:var(--text-dim);">重新启动定时检测</div>
+        </div>
+      </div>
+
+      <div style="margin-top:20px;padding:14px 18px;background:var(--surface2);border-radius:8px;border-left:3px solid var(--success);">
+        <div style="font-family:var(--font-mono);font-size:0.78rem;color:var(--success);">💚 健康分机制</div>
+        <div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:8px;font-size:0.7rem;font-family:var(--font-mono);">
+          <span>初始 → <b style="color:#fff;">100 分</b></span>
+          <span>正常检测 → <b style="color:var(--success);">+5 分</b>（上限100）</span>
+          <span>warning → <b style="color:var(--warn);">-10 分</b></span>
+          <span>critical → <b style="color:var(--critical);">-20 分</b></span>
+          <span>💚≥90 健康</span>
+          <span>💛≥70 良好</span>
+          <span>🧡≥50 注意</span>
+          <span>❤️&lt;50 危险</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== FOOTER ====== -->
+  <div style="text-align:center;padding:40px 0 20px;font-family:var(--font-mono);font-size:0.7rem;color:var(--text-dim);">
+    Smart Monitor v1.2.0 · Architecture Visualization · Powered by LangGraph + FastAPI + Milvus
+  </div>
+
+</div>
+
+<script>
+function toggleSection(header) {
+  const section = header.parentElement;
+  section.classList.toggle('open');
+}
+</script>
+
+</body>
+</html>

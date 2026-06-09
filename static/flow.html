@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>流程结构</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#0d1117; color:#c9d1d9; font-family:'PingFang SC','Microsoft YaHei',sans-serif; padding:30px 20px; }
+h1 { text-align:center; font-size:1.8rem; color:#58a6ff; margin-bottom:8px; }
+.sub { text-align:center; font-size:0.8rem; color:#8b949e; margin-bottom:40px; }
+
+/* flow row */
+.flow-row { display:flex; align-items:flex-start; justify-content:center; gap:16px; flex-wrap:wrap; margin-bottom:20px; }
+
+/* box */
+.box {
+  background:#161b22; border:2px solid #30363d; border-radius:12px;
+  padding:20px 24px; text-align:center; min-width:160px; max-width:240px;
+  transition:0.2s;
+}
+.box:hover { border-color:#58a6ff; transform:translateY(-2px); }
+.box.start { border-color:#3fb950; }
+.box.end { border-color:#f85149; }
+.box.agent { border-color:#58a6ff; }
+.box.io { border-color:#d2a8ff; }
+.box .icon { font-size:1.8rem; margin-bottom:8px; }
+.box .title { font-size:1rem; font-weight:700; color:#f0f6fc; margin-bottom:4px; }
+.box .desc { font-size:0.78rem; color:#8b949e; line-height:1.5; }
+.box .code { font-size:0.68rem; color:#7ee787; font-family:monospace; margin-top:6px; word-break:break-all; }
+
+/* arrow between boxes */
+.arrow { display:flex; align-items:center; color:#58a6ff; font-size:1.5rem; flex-shrink:0; padding-top:20px; }
+.arrow-down { text-align:center; color:#58a6ff; font-size:1.3rem; padding:4px 0; }
+
+/* section */
+.section { margin:50px 0 30px; }
+.section-title { font-size:1.1rem; color:#f0f6fc; border-left:3px solid #58a6ff; padding-left:12px; margin-bottom:16px; }
+
+/* side-by-side */
+.split { display:grid; grid-template-columns:1fr 1fr; gap:24px; }
+@media(max-width:768px){ .split{grid-template-columns:1fr;} }
+
+/* path line */
+.path { background:#161b22; border:1px solid #30363d; border-radius:10px; padding:20px 24px; margin:16px 0; }
+.path h3 { font-size:0.9rem; color:#d2a8ff; margin-bottom:10px; }
+.path ol { padding-left:20px; color:#c9d1d9; font-size:0.82rem; line-height:2; }
+.path ol li span { color:#58a6ff; font-family:monospace; font-size:0.75rem; }
+
+/* big highlight */
+.highlight { background:linear-gradient(135deg,#1a2332,#1a1f2e); border:2px solid #30363d; border-radius:12px; padding:20px 28px; margin:20px 0; }
+.highlight h3 { color:#58a6ff; font-size:1rem; margin-bottom:12px; }
+
+/* code block */
+pre { background:#0d1117; border:1px solid #30363d; border-radius:8px; padding:12px 16px; font-size:0.72rem; overflow-x:auto; margin:8px 0; line-height:1.6; }
+</style>
+</head>
+<body>
+
+<h1>🏗️ 智能监控平台 · 流程结构</h1>
+<p class="sub">每一层做什么、数据怎么流转、代码在哪</p>
+
+<!-- ============ L1: 总体 ============ -->
+<div class="section">
+  <div class="section-title">📌 第一层：5 秒看懂整个系统</div>
+  <div class="flow-row">
+    <div class="box start">
+      <div class="icon">👤</div>
+      <div class="title">你</div>
+      <div class="desc">注册一个监控系统<br>配好检测器和阈值</div>
+      <div class="code">POST /api/systems</div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="box">
+      <div class="icon">⏰</div>
+      <div class="title">定时器</div>
+      <div class="desc">每隔 N 秒<br>自动触发一次检测</div>
+      <div class="code">scheduler/engine.py</div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="box agent">
+      <div class="icon">🧠</div>
+      <div class="title">AI Agent</div>
+      <div class="desc">规划→执行检测器<br>→复盘分析→写报告</div>
+      <div class="code">agent/graph.py</div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="box">
+      <div class="icon">📢</div>
+      <div class="title">飞书通知</div>
+      <div class="desc">异常推送卡片消息<br>正常静默</div>
+      <div class="code">tools/feishu_notifier.py</div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="box end">
+      <div class="icon">💾</div>
+      <div class="title">入库</div>
+      <div class="desc">存检测历史<br>存故障记录</div>
+      <div class="code">dao/store.py</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ L2: Agent内部 ============ -->
+<div class="section">
+  <div class="section-title">📌 第二层：AI Agent 内部三步循环</div>
+  <div class="flow-row">
+    <div class="box agent">
+      <div class="icon">📋</div>
+      <div class="title">Planner 规划器</div>
+      <div class="desc">「先查CPU，再查内存」<br>把检测器排好顺序</div>
+      <div class="code">agent/planner.py</div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="box agent">
+      <div class="icon">⚡</div>
+      <div class="title">Executor 执行器</div>
+      <div class="desc">按顺序一个一个<br>调检测器拿数据<br>异常的记录下来</div>
+      <div class="code">agent/executor.py</div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="box agent">
+      <div class="icon">🔍</div>
+      <div class="title">Replanner 复盘器</div>
+      <div class="desc">「是毛刺还是真故障？」<br>查知识库→写诊断报告</div>
+      <div class="code">agent/replanner.py</div>
+    </div>
+  </div>
+
+  <div class="path" style="margin-top:20px;">
+    <h3>🔁 循环逻辑</h3>
+    <ol>
+      <li>Executor 执行第 1 步 → <span>should_continue_execution()</span> 返回 "continue" → 回到 Executor 执行第 2 步</li>
+      <li>Executor 执行第 2 步 → 计划全部执行完 → 返回 "review" → 进入 Replanner</li>
+      <li>Replanner 分析完 → <span>decide_next()</span> 返回 "done" → 流程结束</li>
+    </ol>
+  </div>
+</div>
+
+<!-- ============ L3: 告警管道 ============ -->
+<div class="section">
+  <div class="section-title">📌 第三层：AlertPipeline 告警管道（核心调度）</div>
+  <div class="path">
+    <h3>路径：alert/pipeline.py 的 run() 方法，8 个步骤串起来</h3>
+    <ol>
+      <li><b>冷却检查</b> — 60 秒内同一个系统不重复告警，防止刷屏</li>
+      <li><b>加载历史</b> — 从 store 取最近 60 条检测记录，给 Agent 做趋势分析用</li>
+      <li><b>调用 Agent</b> — <span>agent_graph.ainvoke({...})</span> 启动 Plan→Execute→Replan 三步</li>
+      <li><b>保存检测历史</b> — 无论正常还是异常，每次检测结果都存下来</li>
+      <li><b>判断结果</b> — normal 就健康分 +5 结束；warning/critical 继续下面步骤</li>
+      <li><b>飞书推送</b> — 拼 Markdown 卡片（异常表格 + 诊断摘要）→ POST 到飞书 Webhook</li>
+      <li><b>扣健康分</b> — critical 扣 20、warning 扣 10</li>
+      <li><b>存故障记录</b> — 故障详情存 incidents.json/MySQL，报告存 reports/ 目录</li>
+    </ol>
+  </div>
+</div>
+
+<!-- ============ L4: 检测器 ============ -->
+<div class="section">
+  <div class="section-title">📌 第四层：8 个检测器怎么工作</div>
+  <div class="split">
+    <div class="path">
+      <h3>🏠 本地检测器（不需要外部服务）</h3>
+      <ol>
+        <li><b>local_cpu</b> → <span>psutil.cpu_percent(interval=1)</span></li>
+        <li><b>local_memory</b> → <span>psutil.virtual_memory().percent</span></li>
+        <li><b>local_disk</b> → <span>shutil.disk_usage(path)</span></li>
+        <li><b>http_health</b> → <span>httpx.get(url/health)</span></li>
+      </ol>
+    </div>
+    <div class="path">
+      <h3>☁️ 远程检测器（需要连接外部服务）</h3>
+      <ol>
+        <li><b>prometheus_cpu</b> → <span>PromQL 查 node_cpu</span></li>
+        <li><b>prometheus_memory</b> → <span>PromQL 查 node_memory</span></li>
+        <li><b>mysql_slow_queries</b> → <span>SHOW GLOBAL STATUS LIKE 'Slow_queries'</span></li>
+        <li><b>redis_memory</b> → <span>r.info("memory")</span></li>
+      </ol>
+    </div>
+  </div>
+  <div class="path" style="margin-top:16px;">
+    <h3>🔌 检测器是怎么注册的？</h3>
+    <ol>
+      <li>每个检测器类上面有 <span>@register_detector("local_cpu")</span> 装饰器</li>
+      <li>Python 在 <span>import app.detectors.local</span> 时自动执行装饰器，把类存到 DetectorRegistry 字典里</li>
+      <li>Executor 执行时调用 <span>DetectorRegistry.get_or_create("local_cpu")</span> 拿到实例</li>
+    </ol>
+  </div>
+</div>
+
+<!-- ============ L5: RAG ============ -->
+<div class="section">
+  <div class="section-title">📌 第五层：知识库 RAG（AI 诊断时怎么查资料）</div>
+  <div class="path">
+    <h3>三层降级：先向量搜 → 不行就关键词匹配 → 再不行就空</h3>
+    <ol>
+      <li><b>首选：Milvus 向量检索</b> — 把异常描述（如"CPU 85% 使用率过高"）转成 1024 维向量 → 在知识库里找最相似的 5 个段落</li>
+      <li><b>降级：TAG_INDEX 关键词</b> — Milvus 挂了就用字典匹配，比如"cpu"关键词 → cpu_high_usage.md</li>
+      <li><b>兜底：返回空</b> — 告诉 LLM "暂无知识库参考"，LLM 凭自己的知识写报告</li>
+    </ol>
+  </div>
+  <div class="highlight">
+    <h3>📚 知识库里有什么？7 篇运维文档</h3>
+    <pre>cpu_high_usage.md        → CPU 飙高怎么处理（死循环/流量突增/定时任务重叠/慢查询）
+memory_high_usage.md     → 内存泄漏怎么排查
+disk_high_usage.md       → 磁盘满了怎么办
+mysql_slow_query.md      → 慢查询怎么优化
+redis_memory_high.md     → Redis 内存高了怎么处理
+service_unavailable.md   → 服务挂了怎么恢复
+slow_response.md         → 响应慢怎么诊断</pre>
+    <p style="font-size:0.78rem;color:#8b949e;margin-top:8px;">
+      每篇文档按 ## 二级标题切成多个段落，每个段落标记类型：问题描述/排查步骤/根因分析/处理方案/紧急处理/验证步骤。<br>
+      索引入 Milvus 时：段落内容 → Embedding 模型 → 向量 → 存入。检索时：问题 → 向量化 → 搜相似段落。
+    </p>
+  </div>
+</div>
+
+<!-- ============ L6: 飞书 ============ -->
+<div class="section">
+  <div class="section-title">📌 第六层：飞书双通道</div>
+  <div class="split">
+    <div class="path">
+      <h3>📤 通道① Webhook（自动推）</h3>
+      <ol>
+        <li>AlertPipeline 检测到异常</li>
+        <li>调用 <span>FeishuNotifier.send_markdown()</span></li>
+        <li>POST 飞书 Webhook URL</li>
+        <li>群聊收到 Markdown 卡片</li>
+      </ol>
+      <p style="font-size:0.72rem;color:#8b949e;margin-top:8px;">代码：tools/feishu_notifier.py</p>
+    </div>
+    <div class="path">
+      <h3>📥 通道② WebSocket（你主动问）</h3>
+      <ol>
+        <li>独立进程 <span>run_feishu_ws.py</span> 保持长连接</li>
+        <li>你在群里 @机器人 "状态"</li>
+        <li>WS 收到消息 → POST /api/feishu/handle</li>
+        <li>主服务解析命令 → 返回结果</li>
+      </ol>
+      <p style="font-size:0.72rem;color:#8b949e;margin-top:8px;">代码：run_feishu_ws.py + api/monitoring.py:251</p>
+    </div>
+  </div>
+</div>
+
+<!-- ============ L7: 存储 ============ -->
+<div class="section">
+  <div class="section-title">📌 第七层：数据存储（自动降级）</div>
+  <div class="highlight">
+    <h3>存哪里？MySQL → 连不上就 JSON 文件</h3>
+    <pre>dao/store.py 里每个函数都是这样的结构：
+
+def get_system(id):
+    if _engine is None:           ← MySQL 连不上
+        return 从 JSON 文件读       ← data/systems.json
+    else:                         ← MySQL 正常
+        return 从 MySQL 查         ← systems 表</pre>
+    <p style="font-size:0.78rem;color:#8b949e;margin-top:12px;">
+      三张表 = 三个 JSON 文件：<br>
+      systems 表 → data/systems.json（系统配置）<br>
+      incidents 表 → data/incidents.json（故障记录）<br>
+      check_history 表 → data/check_history.json（每次检测的指标值）
+    </p>
+  </div>
+</div>
+
+<!-- ============ SUMMARY ============ -->
+<div class="section">
+  <div class="section-title">📌 总结：一条请求的完整路径</div>
+  <div class="highlight" style="text-align:center;">
+    <pre style="text-align:left;display:inline-block;">
+定时器响 ──→ AlertPipeline.run()
+                │
+                ├── 1. 冷却检查（60s 不重复）
+                ├── 2. 加载历史（60条）
+                ├── 3. Agent.ainvoke()
+                │       ├── Planner:  排顺序 [CPU→内存→磁盘]
+                │       ├── Executor: 一个个调检测器取数据（循环）
+                │       └── Replanner: 毛刺过滤→RAG查知识库→LLM写报告
+                │
+                ├── 4. 保存检测历史
+                │
+                └── 5. 结果
+                     ├── normal → 健康+5 → END
+                     └── anomaly → 飞书推送 → 扣分 → 存故障 → END</pre>
+  </div>
+</div>
+
+</body>
+</html>
