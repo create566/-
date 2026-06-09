@@ -93,3 +93,4 @@ tr:hover { background: #283548; }
 #register-result { margin-top: 16px; padding: 12px; border-radius: 8px; }
 #register-result.success { background: #14532d; color: #86efac; }
 #register-result.error { background: #7f1d1d; color: #fca5a5; }
+

@@ -25,6 +25,7 @@ COPY static/ ./static/
 COPY scripts/ ./scripts/
 COPY vendor/ ./vendor/
 COPY run_feishu_ws.py /app/run_feishu_ws.py
+COPY run_feishu_ws_direct.py /app/run_feishu_ws_direct.py
 
 # 目录
 COPY start.sh /app/start.sh

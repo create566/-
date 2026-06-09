@@ -242,10 +242,20 @@ async def push_incident(incident_id: str):
     return UnifiedResponse.success(result={"status": "open", "pushed": True}).model_dump()
 
 
+@router.delete("/incidents/{incident_id}")
+async def delete_incident_api(incident_id: str):
+    """删除故障记录"""
+    ok = store.delete_incident(incident_id)
+    if not ok:
+        return UnifiedResponse.error(error_message="故障记录不存在", code=404).model_dump()
+    return UnifiedResponse.success(result={"deleted": True}).model_dump()
+
+
 # ==================== 飞书机器人交互 ====================
 
 class FeishuHandleRequest(BaseModel):
     text: str = Field(default="", description="用户发送给机器人的文本")
+    chat_id: str = Field(default="", description="飞书群聊ID，用于会话记忆")
 
 
 @router.post("/feishu/handle")
@@ -258,7 +268,7 @@ async def feishu_handle(req: FeishuHandleRequest):
     t = text.lower()
 
     # ── 帮助 ──
-    if any(kw in t for kw in ["帮助", "help", "功能", "命令", "?", "？"]):
+    if any(kw in t for kw in ["帮助", "help", "功能", "命令"]):
         return {"reply": _build_help()}
 
     # ── 系统列表 & 总览状态 ──
@@ -319,7 +329,7 @@ async def feishu_handle(req: FeishuHandleRequest):
             return {"reply": _build_system_detail(s["name"])}
 
     # ── 自由对话：交给 LLM 处理 ──
-    return {"reply": await _free_chat(text)}
+    return {"reply": await _free_chat(text, chat_id=req.chat_id)}
 
 
 # ──────── 辅助函数 ────────
@@ -784,33 +794,72 @@ def _build_trend_chart(name: str) -> str:
 
 # ──────── 自由对话 ────────
 
-async def _free_chat(question: str) -> str:
-    """调用 vLLM 做自由对话回答"""
+async def _free_chat(question: str, chat_id: str = "") -> str:
+    """调用 ChatService 做带记忆的自由对话回答"""
     try:
-        from app.core.llm_factory import LLMFactory
-        from langchain_core.messages import HumanMessage
-
-        llm = LLMFactory.create_chat_model(max_tokens=500, timeout=30)
-
-        systems = store.list_systems()
-        sys_info = "\n".join([
-            f"- {s.get('name','?')} (状态:{s.get('status','?')}, 健康分:{s.get('health_score',100)})"
-            for s in systems
-        ]) or "暂无注册系统"
-
-        prompt = (
-            f"你是智能监控平台的 AI 助手。用户通过飞书 @机器人 提问。\n"
-            f"已知监控系统列表：\n{sys_info}\n\n"
-            f"用户问题：{question}\n\n"
-            f"请用简洁、友好的语气回答，简短（不超过 200 字），重点突出。回答内容基于以上监控数据。"
+        from app.chat.chat_service import ChatService
+        source_id = chat_id or "feishu-anonymous"
+        chat_source = "feishu" if chat_id else "feishu"
+        answer = await ChatService.chat(
+            chat_source=chat_source,
+            source_id=source_id,
+            user_message=question,
         )
-
-        response = await llm.ainvoke([HumanMessage(content=prompt)])
-        answer = response.content.strip()
-        if len(answer) > 600:
-            answer = answer[:600] + "..."
         return answer
-
     except Exception as e:
         logger.error(f"自由对话失败: {e}")
-        return "🤖 抱歉，LLM 暂时无法回答这个问题。"
+        return "抱歉，LLM 暂时无法回答这个问题。"
+
+
+# ==================== Web Chat API ====================
+
+class ChatRequest(BaseModel):
+    session_id: str = Field(default="", description="会话ID，为空则创建新会话")
+    message: str = Field(..., description="用户消息")
+
+
+@router.post("/chat/send")
+async def web_chat_send(req: ChatRequest):
+    """Web 端发送聊天消息"""
+    session_id = req.session_id.strip()
+    if not session_id:
+        session_id = str(uuid.uuid4())
+
+    from app.chat.chat_service import ChatService
+    answer = await ChatService.chat(
+        chat_source="web",
+        source_id=session_id,
+        user_message=req.message,
+    )
+    return UnifiedResponse.success(result={
+        "session_id": session_id,
+        "answer": answer,
+    }).model_dump()
+
+
+@router.get("/chat/sessions")
+async def list_chat_sessions_api():
+    """列出所有聊天会话"""
+    from app.chat.session_manager import SessionManager
+    sessions = await SessionManager.list_sessions()
+    return UnifiedResponse.success(result={"sessions": sessions}).model_dump()
+
+
+@router.get("/chat/sessions/{session_id}")
+async def get_chat_session_info_api(session_id: str):
+    """获取会话详情：历史消息和提取的事实"""
+    from app.chat.chat_service import ChatService
+    info = await ChatService.get_session_info(session_id)
+    if info is None:
+        return UnifiedResponse.error(error_message="会话不存在", code=404).model_dump()
+    return UnifiedResponse.success(result=info).model_dump()
+
+
+@router.delete("/chat/sessions/{session_id}")
+async def delete_chat_session_api(session_id: str):
+    """删除会话及其所有消息和事实"""
+    from app.chat.session_manager import SessionManager
+    ok = await SessionManager.delete_session(session_id)
+    if not ok:
+        return UnifiedResponse.error(error_message="会话不存在", code=404).model_dump()
+    return UnifiedResponse.success(result={"deleted": True}).model_dump()

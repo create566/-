@@ -289,6 +289,83 @@ async def search(anomalies: list[dict], diagnosis_hint: str = "") -> str:
         return search_knowledge(anomalies, diagnosis_hint)
 
 
+# ==================== 聊天助手检索入口 ====================
+
+async def search_by_text(query: str, top_k: int = 3, max_chars: int = 2000) -> str:
+    """文本知识库检索 — 优先向量，降级 TAG_INDEX
+
+    Args:
+        query: 用户输入的自然语言文本
+        top_k: 向量检索返回段落数
+        max_chars: 返回内容最大字符数
+
+    Returns:
+        格式化的知识库文本，无结果时返回空字符串
+    """
+    if not query or not query.strip():
+        return ""
+
+    # ① 优先向量检索
+    try:
+        query_vector = await _get_embedding_direct(query)
+        milvus = _get_milvus_client()
+        if milvus is not None:
+            results = milvus.search(query_vector, top_k=top_k)
+            if results:
+                parts = []
+                for hit in results:
+                    doc_title = hit.get("doc_title", "")
+                    p_type = hit.get("paragraph_type", "")
+                    content = hit.get("content", "")
+                    type_display = _type_label(p_type)
+                    parts.append(f"### {type_display}: {doc_title}\n\n{content}\n")
+
+                result = "\n---\n".join(parts)
+                if len(result) > max_chars:
+                    result = result[:max_chars] + "\n... (已截断)"
+                logger.info(f"chat知识库检索(向量): query='{query[:40]}...', 命中{len(results)}段")
+                return result
+    except Exception as e:
+        logger.warning(f"chat向量检索失败({type(e).__name__}): {e}，降级TAG_INDEX")
+
+    # ② 降级 TAG_INDEX 关键词匹配
+    query_lower = query.lower()
+    matched_docs = set()
+    for tag in TAG_INDEX:
+        if tag in query_lower:
+            for doc in TAG_INDEX[tag]:
+                matched_docs.add(doc)
+
+    if matched_docs:
+        parts = []
+        for doc in sorted(matched_docs):
+            content = _load_doc(doc)
+            if content:
+                # 截取前 max_chars//len(matched_docs) 字符
+                parts.append(f"## {doc.replace('.md', '')}\n\n{content}")
+
+        result = "\n---\n".join(parts)
+        if len(result) > max_chars:
+            result = result[:max_chars] + "\n... (已截断)"
+        logger.info(f"chat知识库检索(TAG): query='{query[:40]}...', 命中{len(matched_docs)}篇")
+        return result
+
+    return ""
+
+
+def _type_label(p_type: str) -> str:
+    mapping = {
+        "alert_info": "告警信息",
+        "problem_description": "问题描述",
+        "troubleshooting_step": "排查步骤",
+        "root_cause": "根因分析",
+        "solution": "处理方案",
+        "emergency_action": "紧急处理",
+        "verification": "验证步骤",
+    }
+    return mapping.get(p_type, p_type)
+
+
 # ==================== 向量检索测试 ====================
 
 async def test_vector_search():

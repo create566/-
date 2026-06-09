@@ -80,12 +80,22 @@ async def lifespan(app: FastAPI):
             monitor_scheduler.schedule(s["id"], s["check_interval_seconds"])
             logger.info(f"📋 已加载系统: {s['name']} (间隔{s['check_interval_seconds']}s)")
 
-    # ⑥ 飞书 WebSocket 由独立进程 run_feishu_ws.py 管理
+    # ⑥ 初始化 Redis（可选，不可用时仅 warn）
+    try:
+        from app.chat.redis_client import get_redis as _get_redis
+        r = await _get_redis()
+        if r:
+            await r.ping()
+            logger.info("Redis 已连接，会话缓存已启用")
+    except Exception as e:
+        logger.warning(f"Redis 不可用，会话缓存将仅使用数据库: {e}")
+
+    # ⑧ 飞书 WebSocket 由独立进程 run_feishu_ws.py 管理
     #    新开终端启动: $env:FEISHU_APP_ID="..."; $env:FEISHU_APP_SECRET="..."; python run_feishu_ws.py
     if config.feishu_app_id and config.feishu_app_secret:
         logger.info(f"🤖 飞书 WebSocket 请在新终端独立启动 (app_id={config.feishu_app_id[:8]}...)")
 
-    # ⑦ 确保检测器已注册
+    # ⑨ 确保检测器已注册
     import app.detectors.local    # noqa: F401
     import app.detectors.remote   # noqa: F401
     from app.detectors.registry import DetectorRegistry
@@ -143,6 +153,15 @@ async def root():
         "docs": "/docs",
         "management": "/static/index.html",
     }
+
+
+@app.get("/chat")
+async def chat_page():
+    """AI 助手独立页面"""
+    chat_path = static_dir / "chat.html"
+    if chat_path.exists():
+        return FileResponse(str(chat_path))
+    return {"error": "chat.html not found"}
 
 
 @app.get("/health")

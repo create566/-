@@ -29,7 +29,7 @@ if __name__ == "__main__":
 
 
 class FeishuWsProcess:
-    def __init__(self, app_id: str, app_secret: str, api_base: str = "http://127.0.0.1:9901"):
+    def __init__(self, app_id: str, app_secret: str, api_base: str = "http://127.0.0.1:9900"):
         self.app_id = app_id
         self.app_secret = app_secret
         self.api_base = api_base
@@ -88,20 +88,20 @@ class FeishuWsProcess:
             logger.info(f"收到 msg_id={msg_id[:8] if msg_id else '?'} chat={chat_id} text={text[:60]} clean={clean_text[:60]}")
 
             # 调用主服务 API 获取回复
-            reply_text = self._get_reply_from_api(clean_text)
+            reply_text = self._get_reply_from_api(clean_text, chat_id)
             if reply_text:
                 self._send_reply(chat_id, reply_text)
 
         except Exception as e:
             logger.error(f"处理消息异常: {e}")
 
-    def _get_reply_from_api(self, text: str) -> str:
+    def _get_reply_from_api(self, text: str, chat_id: str = "") -> str:
         """调用主服务的飞书状态 API 获取回复内容"""
         try:
             # 告诉主服务这是什么消息，它返回回复内容
             resp = http_requests.post(
                 f"{self.api_base}/api/feishu/handle",
-                json={"text": text},
+                json={"text": text, "chat_id": chat_id},
                 timeout=15,
             )
             if resp.status_code == 200:

@@ -20,6 +20,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         "/openapi.json",
         "/redoc",
         "/api/feishu/handle",  # 飞书 WS 进程本地回调，无需认证
+        "/api/chat/send",      # Web 聊天无需认证
     ]
 
     async def dispatch(self, request: Request, call_next):

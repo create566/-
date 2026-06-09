@@ -68,6 +68,38 @@ class CheckHistory(Base):
     checked_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
 
 
+class ChatSession(Base):
+    __tablename__ = "chat_sessions"
+
+    id = Column(String(64), primary_key=True)
+    chat_source = Column(String(16), nullable=False, default="web")
+    source_id = Column(String(128), nullable=False, index=True)
+    title = Column(String(256), default="")
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(String(64), nullable=False, index=True)
+    role = Column(String(16), nullable=False)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+
+
+class MemoryFact(Base):
+    __tablename__ = "memory_facts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(String(64), nullable=False, index=True)
+    key = Column(String(256), nullable=False)
+    value = Column(Text, nullable=False)
+    category = Column(String(64), default="general")
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 # ==================== 引擎和会话管理 ====================
 
 _engine = None
@@ -109,6 +141,9 @@ DATA_DIR = Path("./data")
 SYSTEMS_FILE = DATA_DIR / "systems.json"
 INCIDENTS_FILE = DATA_DIR / "incidents.json"
 HISTORY_FILE = DATA_DIR / "check_history.json"
+CHAT_SESSIONS_FILE = DATA_DIR / "chat_sessions.json"
+CHAT_MESSAGES_FILE = DATA_DIR / "chat_messages.json"
+MEMORY_FACTS_FILE = DATA_DIR / "memory_facts.json"
 
 _json_mode = False
 
@@ -119,7 +154,7 @@ def is_json_mode() -> bool:
 
 def _ensure():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    for f in [SYSTEMS_FILE, INCIDENTS_FILE, HISTORY_FILE]:
+    for f in [SYSTEMS_FILE, INCIDENTS_FILE, HISTORY_FILE, CHAT_SESSIONS_FILE, CHAT_MESSAGES_FILE, MEMORY_FACTS_FILE]:
         if not f.exists():
             f.write_text("[]", encoding="utf-8")
 
@@ -383,6 +418,23 @@ def update_incident_field(incident_id: str, updates: dict) -> Optional[Dict]:
         return _incident_to_dict(inc)
 
 
+def delete_incident(incident_id: str) -> bool:
+    if _engine is None:
+        incidents = _read_json(INCIDENTS_FILE)
+        before = len(incidents)
+        incidents = [i for i in incidents if i.get("id") != incident_id]
+        _write_json(INCIDENTS_FILE, incidents)
+        return len(incidents) < before
+
+    with get_session() as session:
+        inc = session.query(Incident).filter(Incident.id == incident_id).first()
+        if not inc:
+            return False
+        session.delete(inc)
+        session.commit()
+        return True
+
+
 # ==================== 检测历史 ====================
 
 def save_check_history(results: List[Dict]):
@@ -429,6 +481,285 @@ def get_check_history(system_id: Optional[str] = None, limit: int = 100) -> List
             query = query.filter(CheckHistory.system_id == system_id)
         query = query.order_by(CheckHistory.checked_at.desc()).limit(limit)
         return [_history_to_dict(h) for h in query.all()]
+
+
+# ==================== 聊天会话 ====================
+
+def create_session(data: Dict) -> Dict:
+    if _engine is None:
+        sessions = _read_json(CHAT_SESSIONS_FILE)
+        now = datetime.now(timezone.utc).isoformat()
+        session = {
+            "id": data.get("id", ""),
+            "chat_source": data.get("chat_source", "web"),
+            "source_id": data.get("source_id", ""),
+            "title": data.get("title", ""),
+            "created_at": now,
+            "updated_at": now,
+        }
+        sessions.append(session)
+        _write_json(CHAT_SESSIONS_FILE, sessions)
+        return session
+
+    now = datetime.now(timezone.utc)
+    s = ChatSession(
+        id=data.get("id", ""),
+        chat_source=data.get("chat_source", "web"),
+        source_id=data.get("source_id", ""),
+        title=data.get("title", ""),
+        created_at=now,
+        updated_at=now,
+    )
+    with get_session() as session:
+        session.add(s)
+        session.commit()
+        return _chat_session_to_dict(s)
+
+
+def get_chat_session(session_id: str) -> Optional[Dict]:
+    if _engine is None:
+        for s in _read_json(CHAT_SESSIONS_FILE):
+            if s["id"] == session_id:
+                return s
+        return None
+
+    with get_session() as session:
+        s = session.query(ChatSession).filter(ChatSession.id == session_id).first()
+        return _chat_session_to_dict(s) if s else None
+
+
+def get_session_by_source(chat_source: str, source_id: str) -> Optional[Dict]:
+    if _engine is None:
+        for s in _read_json(CHAT_SESSIONS_FILE):
+            if s["chat_source"] == chat_source and s["source_id"] == source_id:
+                return s
+        return None
+
+    with get_session() as session:
+        s = session.query(ChatSession).filter(
+            ChatSession.chat_source == chat_source,
+            ChatSession.source_id == source_id,
+        ).first()
+        return _chat_session_to_dict(s) if s else None
+
+
+def update_session_title(session_id: str, title: str) -> Optional[Dict]:
+    if _engine is None:
+        sessions = _read_json(CHAT_SESSIONS_FILE)
+        for i, s in enumerate(sessions):
+            if s["id"] == session_id:
+                s["title"] = title
+                s["updated_at"] = datetime.now(timezone.utc).isoformat()
+                sessions[i] = s
+                _write_json(CHAT_SESSIONS_FILE, sessions)
+                return s
+        return None
+
+    with get_session() as session:
+        s = session.query(ChatSession).filter(ChatSession.id == session_id).first()
+        if not s:
+            return None
+        s.title = title
+        s.updated_at = datetime.now(timezone.utc)
+        session.commit()
+        return _chat_session_to_dict(s)
+
+
+def update_session_timestamp(session_id: str):
+    if _engine is None:
+        sessions = _read_json(CHAT_SESSIONS_FILE)
+        for i, s in enumerate(sessions):
+            if s["id"] == session_id:
+                s["updated_at"] = datetime.now(timezone.utc).isoformat()
+                sessions[i] = s
+                _write_json(CHAT_SESSIONS_FILE, sessions)
+                return
+        return
+
+    with get_session() as session:
+        s = session.query(ChatSession).filter(ChatSession.id == session_id).first()
+        if s:
+            s.updated_at = datetime.now(timezone.utc)
+            session.commit()
+
+
+def list_sessions(limit: int = 50) -> List[Dict]:
+    if _engine is None:
+        sessions = _read_json(CHAT_SESSIONS_FILE)
+        sessions.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
+        return sessions[:limit]
+
+    with get_session() as session:
+        query = session.query(ChatSession).order_by(ChatSession.updated_at.desc()).limit(limit)
+        return [_chat_session_to_dict(s) for s in query.all()]
+
+
+def delete_session(session_id: str) -> bool:
+    if _engine is None:
+        sessions = _read_json(CHAT_SESSIONS_FILE)
+        filtered = [s for s in sessions if s["id"] != session_id]
+        if len(filtered) < len(sessions):
+            _write_json(CHAT_SESSIONS_FILE, filtered)
+            _delete_session_messages_json(session_id)
+            _delete_session_facts_json(session_id)
+            return True
+        return False
+
+    with get_session() as session:
+        s = session.query(ChatSession).filter(ChatSession.id == session_id).first()
+        if s:
+            session.query(ChatMessage).filter(ChatMessage.session_id == session_id).delete()
+            session.query(MemoryFact).filter(MemoryFact.session_id == session_id).delete()
+            session.delete(s)
+            session.commit()
+            return True
+        return False
+
+
+def _delete_session_messages_json(session_id: str):
+    messages = _read_json(CHAT_MESSAGES_FILE)
+    messages = [m for m in messages if m["session_id"] != session_id]
+    _write_json(CHAT_MESSAGES_FILE, messages)
+
+
+def _delete_session_facts_json(session_id: str):
+    facts = _read_json(MEMORY_FACTS_FILE)
+    facts = [f for f in facts if f["session_id"] != session_id]
+    _write_json(MEMORY_FACTS_FILE, facts)
+
+
+# ==================== 聊天消息 ====================
+
+def save_message(data: Dict) -> Dict:
+    if _engine is None:
+        messages = _read_json(CHAT_MESSAGES_FILE)
+        msg = {
+            "id": len(messages) + 1,
+            "session_id": data["session_id"],
+            "role": data["role"],
+            "content": data["content"],
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        messages.append(msg)
+        _write_json(CHAT_MESSAGES_FILE, messages)
+        return msg
+
+    now = datetime.now(timezone.utc)
+    msg = ChatMessage(
+        session_id=data["session_id"],
+        role=data["role"],
+        content=data["content"],
+        created_at=now,
+    )
+    with get_session() as session:
+        session.add(msg)
+        session.commit()
+        return _chat_message_to_dict(msg)
+
+
+def get_messages(session_id: str, limit: int = 50) -> List[Dict]:
+    if _engine is None:
+        messages = _read_json(CHAT_MESSAGES_FILE)
+        messages = [m for m in messages if m["session_id"] == session_id]
+        messages.sort(key=lambda x: x.get("created_at", ""))
+        return messages[-limit:]
+
+    with get_session() as session:
+        query = session.query(ChatMessage).filter(
+            ChatMessage.session_id == session_id
+        ).order_by(ChatMessage.created_at.asc())
+        if limit:
+            query = query.limit(limit)
+        return [_chat_message_to_dict(m) for m in query.all()]
+
+
+def get_recent_messages(session_id: str, limit: int = 20) -> List[Dict]:
+    if _engine is None:
+        messages = _read_json(CHAT_MESSAGES_FILE)
+        messages = [m for m in messages if m["session_id"] == session_id]
+        messages.sort(key=lambda x: x.get("created_at", ""))
+        return messages[-limit:]
+
+    with get_session() as session:
+        subq = session.query(ChatMessage).filter(
+            ChatMessage.session_id == session_id
+        ).order_by(ChatMessage.created_at.desc()).limit(limit).subquery()
+        query = session.query(ChatMessage).filter(
+            ChatMessage.id.in_(session.query(subq.c.id))
+        ).order_by(ChatMessage.created_at.asc())
+        return [_chat_message_to_dict(m) for m in query.all()]
+
+
+def get_message_count(session_id: str) -> int:
+    if _engine is None:
+        messages = _read_json(CHAT_MESSAGES_FILE)
+        return sum(1 for m in messages if m["session_id"] == session_id)
+
+    with get_session() as session:
+        return session.query(ChatMessage).filter(
+            ChatMessage.session_id == session_id
+        ).count()
+
+
+# ==================== 记忆事实 ====================
+
+def save_fact(data: Dict) -> Dict:
+    if _engine is None:
+        facts = _read_json(MEMORY_FACTS_FILE)
+        for i, f in enumerate(facts):
+            if f["session_id"] == data["session_id"] and f["key"] == data["key"]:
+                f["value"] = data["value"]
+                f["category"] = data.get("category", "general")
+                f["created_at"] = datetime.now(timezone.utc).isoformat()
+                facts[i] = f
+                _write_json(MEMORY_FACTS_FILE, facts)
+                return f
+        fact = {
+            "id": len(facts) + 1,
+            "session_id": data["session_id"],
+            "key": data["key"],
+            "value": data["value"],
+            "category": data.get("category", "general"),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        facts.append(fact)
+        _write_json(MEMORY_FACTS_FILE, facts)
+        return fact
+
+    with get_session() as session:
+        existing = session.query(MemoryFact).filter(
+            MemoryFact.session_id == data["session_id"],
+            MemoryFact.key == data["key"],
+        ).first()
+        if existing:
+            existing.value = data["value"]
+            existing.category = data.get("category", "general")
+            existing.created_at = datetime.now(timezone.utc)
+            session.commit()
+            return _memory_fact_to_dict(existing)
+
+        fact = MemoryFact(
+            session_id=data["session_id"],
+            key=data["key"],
+            value=data["value"],
+            category=data.get("category", "general"),
+            created_at=datetime.now(timezone.utc),
+        )
+        session.add(fact)
+        session.commit()
+        return _memory_fact_to_dict(fact)
+
+
+def get_facts(session_id: str) -> List[Dict]:
+    if _engine is None:
+        facts = _read_json(MEMORY_FACTS_FILE)
+        return [f for f in facts if f["session_id"] == session_id]
+
+    with get_session() as session:
+        query = session.query(MemoryFact).filter(
+            MemoryFact.session_id == session_id
+        ).order_by(MemoryFact.created_at.desc())
+        return [_memory_fact_to_dict(f) for f in query.all()]
 
 
 # ==================== 辅助函数 ====================
@@ -481,6 +812,38 @@ def _history_to_dict(h: CheckHistory) -> Dict:
     }
 
 
+def _chat_session_to_dict(s: ChatSession) -> Dict:
+    return {
+        "id": s.id,
+        "chat_source": s.chat_source,
+        "source_id": s.source_id,
+        "title": s.title,
+        "created_at": s.created_at.isoformat() if s.created_at else None,
+        "updated_at": s.updated_at.isoformat() if s.updated_at else None,
+    }
+
+
+def _chat_message_to_dict(m: ChatMessage) -> Dict:
+    return {
+        "id": m.id,
+        "session_id": m.session_id,
+        "role": m.role,
+        "content": m.content,
+        "created_at": m.created_at.isoformat() if m.created_at else None,
+    }
+
+
+def _memory_fact_to_dict(f: MemoryFact) -> Dict:
+    return {
+        "id": f.id,
+        "session_id": f.session_id,
+        "key": f.key,
+        "value": f.value,
+        "category": f.category,
+        "created_at": f.created_at.isoformat() if f.created_at else None,
+    }
+
+
 def save_report_md(incident_id: str, report_content: str) -> str:
     """保存故障报告为 Markdown 文件到指定目录"""
     from app.config import config
@@ -495,7 +858,7 @@ def save_report_md(incident_id: str, report_content: str) -> str:
 
 
 def cleanup_old_data(days: int = 7):
-    """清理 N 天前的数据（JSON模式：check_history.json + reports目录）"""
+    """清理 N 天前的数据（JSON模式：check_history.json + 聊天记录 + reports目录）"""
     import os
     from datetime import datetime, timezone, timedelta
 
@@ -505,24 +868,68 @@ def cleanup_old_data(days: int = 7):
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     cleaned = 0
 
-    # 清理 check_history.json 中超过7天的记录
-    if _json_mode:
-        history_file = DATA_DIR / "check_history.json"
-        if history_file.exists():
+    def _clean_json_file(file: Path, time_field: str):
+        nonlocal cleaned
+        if file.exists():
             try:
-                data = json.loads(history_file.read_text(encoding="utf-8"))
+                data = json.loads(file.read_text(encoding="utf-8"))
                 before = len(data)
                 data = [
                     h for h in data
-                    if datetime.fromisoformat(h["checked_at"]).replace(tzinfo=timezone.utc) > cutoff
+                    if datetime.fromisoformat(h[time_field]).replace(tzinfo=timezone.utc) > cutoff
                 ]
                 after = len(data)
                 if before > after:
-                    history_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+                    file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
                     cleaned += before - after
-                    logger.info(f"清理 check_history.json: 删除 {before - after} 条过期记录，保留 {after} 条")
+                    logger.info(f"清理 {file.name}: 删除 {before - after} 条，保留 {after} 条")
             except Exception as e:
-                logger.warning(f"清理 check_history.json 失败: {e}")
+                logger.warning(f"清理 {file.name} 失败: {e}")
+
+    # 清理 check_history.json
+    if _json_mode:
+        _clean_json_file(DATA_DIR / "check_history.json", "checked_at")
+        _clean_json_file(CHAT_MESSAGES_FILE, "created_at")
+        _clean_json_file(MEMORY_FACTS_FILE, "created_at")
+        _clean_json_file(CHAT_SESSIONS_FILE, "updated_at")
+
+    # MySQL 模式：清理 chat_messages
+    if _engine is not None:
+        try:
+            with get_session() as session:
+                deleted = session.query(ChatMessage).filter(
+                    ChatMessage.created_at < cutoff
+                ).delete()
+                session.commit()
+                if deleted:
+                    cleaned += deleted
+                    logger.info(f"清理 chat_messages: 删除 {deleted} 条过期记录")
+        except Exception as e:
+            logger.warning(f"清理 chat_messages 失败: {e}")
+
+        try:
+            with get_session() as session:
+                deleted = session.query(MemoryFact).filter(
+                    MemoryFact.created_at < cutoff
+                ).delete()
+                session.commit()
+                if deleted:
+                    cleaned += deleted
+                    logger.info(f"清理 memory_facts: 删除 {deleted} 条过期记录")
+        except Exception as e:
+            logger.warning(f"清理 memory_facts 失败: {e}")
+
+        try:
+            with get_session() as session:
+                deleted = session.query(ChatSession).filter(
+                    ChatSession.updated_at < cutoff
+                ).delete()
+                session.commit()
+                if deleted:
+                    cleaned += deleted
+                    logger.info(f"清理 chat_sessions: 删除 {deleted} 条过期会话")
+        except Exception as e:
+            logger.warning(f"清理 chat_sessions 失败: {e}")
 
     # 清理 reports 目录下超过7天的 .md 文件
     try:
@@ -554,6 +961,8 @@ def init_database(config):
         logger.info("数据库模式: MySQL")
     except Exception as e:
         logger.warning(f"数据库连接失败，回退到 JSON 模式: {e}")
-        global _json_mode
+        global _engine, _SessionLocal, _json_mode
+        _engine = None
+        _SessionLocal = None
         _json_mode = True
         logger.info("数据库模式: JSON (开发模式)")

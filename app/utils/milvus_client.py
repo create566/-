@@ -178,13 +178,14 @@ class MilvusKnowledgeBase:
             formatted = []
             for hits in results:
                 for hit in hits:
+                    entity = hit.get("entity", {}) or {}
                     formatted.append({
-                        "paragraph_id": hit.get("paragraph_id", ""),
-                        "doc_id": hit.get("doc_id", ""),
-                        "doc_title": hit.get("doc_title", ""),
-                        "paragraph_type": hit.get("paragraph_type", ""),
-                        "content": hit.get("entity", {}).get("content", ""),
-                        "tags": hit.get("entity", {}).get("tags", []),
+                        "paragraph_id": hit.get("paragraph_id") or entity.get("paragraph_id", ""),
+                        "doc_id": hit.get("doc_id") or entity.get("doc_id", ""),
+                        "doc_title": hit.get("doc_title") or entity.get("doc_title", ""),
+                        "paragraph_type": hit.get("paragraph_type") or entity.get("paragraph_type", ""),
+                        "content": entity.get("content") or hit.get("content", ""),
+                        "tags": entity.get("tags") or hit.get("tags", []),
                         "distance": hit.get("distance", 0),
                     })
 

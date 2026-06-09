@@ -19,6 +19,14 @@ services:
       - EMBEDDING_API_BASE=http://host.docker.internal:8011/v1
       - EMBEDDING_MODEL
       - EMBEDDING_DIM
+      - EMBEDDING_CLOUD_MODEL
+      - EMBEDDING_CLOUD_DIM
+      - MILVUS_HOST=${MILVUS_HOST:-localhost}
+      - MILVUS_PORT=${MILVUS_PORT:-19530}
+      - MILVUS_USER=${MILVUS_USER:-}
+      - MILVUS_PASSWORD=${MILVUS_PASSWORD:-}
+      - MILVUS_COLLECTION=${MILVUS_COLLECTION:-knowledge_base}
+      - PROMETHEUS_URL=${PROMETHEUS_URL:-http://prometheus:9090}
       - DB_HOST=host.docker.internal
       - DB_PORT=3306
       - DB_USER=root

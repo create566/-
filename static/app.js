@@ -122,6 +122,7 @@ async function loadIncidents() {
                     ${i.status === 'pending' ? `<button class="btn-sm" style="background:#0ea5e9;color:#fff;border-color:#0ea5e9" onclick="pushIncident('${i.id}')">📤 推送飞书</button>` : ''}
                     ${i.status === 'open' ? `<button class="btn-sm success" onclick="ackIncident('${i.id}')">✅ 确认</button>` : ''}
                     ${i.status !== 'resolved' ? `<button class="btn-sm success" onclick="resolveIncident('${i.id}')">✔ 解决</button>` : ''}
+                    <button class="btn-sm danger" onclick="deleteIncident('${i.id}')">🗑 删除</button>
                 </div>
             </div>`;
         }
@@ -267,6 +268,12 @@ async function resolveIncident(id) {
     loadIncidents();
 }
 
+async function deleteIncident(id) {
+    if (!confirm('确定删除这条故障记录吗？')) return;
+    await apiFetch(API + '/incidents/' + id, { method: 'DELETE' });
+    loadIncidents();
+}
+
 // ==================== 工具函数 ====================
 function esc(str) {
     return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -283,18 +290,27 @@ function timeAgo(isoStr) {
 }
 
 function renderMarkdown(md) {
-    return (md || '')
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/### (.+)/g, '<h3>$1</h3>')
-        .replace(/## (.+)/g, '<h2>$1</h2>')
-        .replace(/# (.+)/g, '<h1>$1</h1>')
-        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/`([^`]+)`/g, '<code>$1</code>')
-        .replace(/\|(.+)\|/g, (m) => {
-            const cells = m.split('|').filter(c => c.trim()).map(c => `<td>${c.trim()}</td>`).join('');
-            return `<tr>${cells}</tr>`;
-        })
-        .replace(/\n/g, '<br>');
+    let out = (md || '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    // code blocks
+    out = out.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+    // inline code
+    out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
+    // bold
+    out = out.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    // headers
+    out = out.replace(/^### (.+)/gm, '<h3>$1</h3>');
+    out = out.replace(/^## (.+)/gm, '<h2>$1</h2>');
+    out = out.replace(/^# (.+)/gm, '<h1>$1</h1>');
+    // table rows
+    out = out.replace(/^\|(.+)\|$/gm, function(m) {
+        const cells = m.split('|').filter(function(c) { return c.trim(); }).map(function(c) { return '<td>' + c.trim() + '</td>'; }).join('');
+        return '<tr>' + cells + '</tr>';
+    });
+    // line breaks
+    out = out.replace(/━+/g, function(m) { return '<span style="color:#334155">' + m + '</span>'; });
+    out = out.replace(/\n/g, '<br>');
+    return out;
 }
 
 // 初始化
