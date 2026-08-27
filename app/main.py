@@ -13,6 +13,7 @@ from app.config import config
 from loguru import logger
 from app.api import health, monitoring
 from app.middleware.auth import AuthMiddleware
+from app.middleware.rate_limit import RateLimitMiddleware
 from app.metrics.exporter import metrics_endpoint
 
 
@@ -130,6 +131,13 @@ app.add_middleware(
 
 # API 认证中间件
 app.add_middleware(AuthMiddleware)
+
+# API 限流中间件（滑动窗口，按 IP+路径）
+app.add_middleware(
+    RateLimitMiddleware,
+    max_requests=config.rate_limit_max_requests,
+    window_seconds=config.rate_limit_window_seconds,
+)
 
 # 注册路由
 app.include_router(health.router, tags=["健康检查"])

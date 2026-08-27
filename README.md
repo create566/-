@@ -1,5 +1,7 @@
 # 智能监控平台
 
+[![CI](https://github.com/create566/-/actions/workflows/ci.yml/badge.svg)](https://github.com/create566/-/actions)
+
 基于 Plan-Execute-Replan Agent 的全自动智能监控系统，支持 Milvus 向量检索、RAG 知识增强、飞书告警。
 
 ## 核心能力

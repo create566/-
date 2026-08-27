@@ -1,5 +1,6 @@
 # 智能监控平台 — Docker Compose
-# 启动: docker compose up -d
+# 一键启动: docker compose up -d
+# 启动后访问: http://localhost:9900
 
 services:
   app:
@@ -8,56 +9,136 @@ services:
     ports:
       - "9900:9900"
     environment:
-      - LLM_PROVIDER
-      - LLM_API_KEY
-      - LLM_API_BASE=http://host.docker.internal:8010/v1
-      - LLM_MODEL
-      - OLLAMA_MODEL
-      - DASHSCOPE_MODEL
-      - EMBEDDING_PROVIDER
-      - EMBEDDING_API_KEY
-      - EMBEDDING_API_BASE=http://host.docker.internal:8011/v1
-      - EMBEDDING_MODEL
-      - EMBEDDING_DIM
-      - EMBEDDING_CLOUD_MODEL
-      - EMBEDDING_CLOUD_DIM
-      - MILVUS_HOST=${MILVUS_HOST:-localhost}
-      - MILVUS_PORT=${MILVUS_PORT:-19530}
-      - MILVUS_USER=${MILVUS_USER:-}
-      - MILVUS_PASSWORD=${MILVUS_PASSWORD:-}
-      - MILVUS_COLLECTION=${MILVUS_COLLECTION:-knowledge_base}
-      - PROMETHEUS_URL=${PROMETHEUS_URL:-http://prometheus:9090}
-      - DB_HOST=host.docker.internal
+      # LLM
+      - LLM_PROVIDER=${LLM_PROVIDER:-openai}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_API_BASE=${LLM_API_BASE:-https://api.deepseek.com}
+      - LLM_MODEL=${LLM_MODEL:-deepseek-chat}
+      # Embedding
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-openai}
+      - EMBEDDING_API_KEY=${EMBEDDING_API_KEY:-}
+      - EMBEDDING_API_BASE=${EMBEDDING_API_BASE:-https://api.deepseek.com}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-text-embedding-3-small}
+      - EMBEDDING_DIM=${EMBEDDING_DIM:-1536}
+      # 数据库（容器内服务名）
+      - DB_HOST=mysql
       - DB_PORT=3306
       - DB_USER=root
-      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_PASSWORD=${DB_PASSWORD:-password}
       - DB_NAME=${DB_NAME:-smart_monitor}
+      # Redis
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      # Milvus
+      - MILVUS_HOST=milvus
+      - MILVUS_PORT=19530
+      - MILVUS_COLLECTION=${MILVUS_COLLECTION:-knowledge_base}
+      # Prometheus
+      - PROMETHEUS_URL=http://prometheus:9090
+      # 飞书（可选）
       - FEISHU_ENABLED=${FEISHU_ENABLED:-False}
       - FEISHU_WEBHOOK_URL=${FEISHU_WEBHOOK_URL:-}
       - FEISHU_APP_ID=${FEISHU_APP_ID:-}
       - FEISHU_APP_SECRET=${FEISHU_APP_SECRET:-}
+      # API 认证
       - API_KEY=${API_KEY:-change-me}
       - REPORT_DIR=./reports
     depends_on:
+      mysql:
+        condition: service_healthy
       redis:
         condition: service_started
+      milvus:
+        condition: service_healthy
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
       - ./reports:/app/reports
     restart: unless-stopped
 
+  # MySQL — 系统/告警/会话数据
+  mysql:
+    image: mysql:8.0
+    container_name: smart-monitor-mysql
+    ports:
+      - "3308:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=${DB_PASSWORD:-password}
+      - MYSQL_DATABASE=${DB_NAME:-smart_monitor}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init_mysql.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_PASSWORD:-password}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis — 缓存 + Agent checkpointer
   redis:
     image: redis:7-alpine
     container_name: smart-monitor-redis
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - redis_data:/data
     restart: unless-stopped
 
+  # Milvus — 知识库向量存储
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    container_name: smart-monitor-etcd
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    volumes:
+      - etcd_data:/etcd
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    container_name: smart-monitor-minio
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    volumes:
+      - minio_data:/minio_data
+    command: minio server /minio_data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  milvus:
+    image: milvusdb/milvus:v2.4.0
+    container_name: smart-monitor-milvus
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+    volumes:
+      - milvus_data:/var/lib/milvus
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    command: milvus run standalone
+    restart: unless-stopped
+    depends_on:
+      - etcd
+      - minio
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Prometheus — 指标采集
   prometheus:
     image: prom/prometheus:latest
     container_name: smart-monitor-prometheus
@@ -68,4 +149,8 @@ services:
     restart: unless-stopped
 
 volumes:
+  mysql_data:
   redis_data:
+  etcd_data:
+  minio_data:
+  milvus_data:

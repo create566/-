@@ -42,21 +42,22 @@ async def replanner(state: AgentState) -> dict:
             "anomalies": [],
         }
 
-    # ② LLM 深度判断
-    results_text = "\n".join(
-        f"- {r.get('detector_name','')}: {r.get('metric_name','')}={r.get('metric_value','')} ({r.get('severity','')}) — {r.get('message','')}"
-        for r in results
-    )
-    anomalies_text = "\n".join(
-        f"- {a.get('detector_name','')}: {a.get('metric_name','')}={a.get('metric_value','')} ({a.get('severity','')})"
-        for a in anomalies
-    )
+    # ② 判断是否需要深度诊断
+    if _should_diagnose(anomalies, history) and diagnosis_rounds < 2:
+        logger.info(
+            f"Replanner: [{state.get('system_name')}] 触发第{diagnosis_rounds + 1}轮深度诊断 "
+            f"({len(anomalies)}个异常)"
+        )
+        return {
+            "severity": "",
+            "root_cause": "",
+            "report": "",
+            "phase": "diagnosing",
+            "anomalies": anomalies,
+        }
+
+    # ③ 无需深度诊断 → 直接出报告
     history_text = _format_history_trend(history)
-
-    # 检测完成 → 直接出报告（诊断在一次LLM分析中完成）
-    return await _generate_report(state, llm, anomalies, results, history_text)
-
-    # 默认出报告
     return await _generate_report(state, llm, anomalies, results, history_text)
 
 
@@ -232,6 +233,11 @@ def _extract_json(text: str) -> str:
 
 
 def decide_next(state: AgentState) -> str:
-    """决定下一步：检测完直接结束"""
+    """决定下一步：
+    - diagnosing → continue（回 planner 制定诊断计划）
+    - done → 结束
+    """
     phase = state.get("phase", "done")
-    return "done" if phase == "done" else "done"
+    if phase == "diagnosing":
+        return "continue"
+    return "done"

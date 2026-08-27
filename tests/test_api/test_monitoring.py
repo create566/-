@@ -7,14 +7,26 @@ from fastapi.testclient import TestClient
 class TestHealthAPI:
     """健康检查 API 测试"""
 
-    def test_health_endpoint(self):
-        """测试 /health 端点"""
+    def test_health_endpoint(self, monkeypatch):
+        """测试 /health 端点（mock LLM，不依赖外部 API）"""
+        import langchain_openai
+
+        class FakeLLM:
+            def invoke(self, messages, **kwargs):
+                class _Resp:
+                    content = "pong"
+                return _Resp()
+
+        monkeypatch.setattr(langchain_openai, "ChatOpenAI", lambda **kw: FakeLLM())
+
         from app.main import app
         client = TestClient(app)
         response = client.get("/health")
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "ok"
+        assert data["data"]["result"]["status"] in ("healthy", "degraded")
+        assert data["data"]["result"]["services"]["api"]["available"] is True
+        assert data["data"]["result"]["services"]["llm"]["available"] is True
 
     def test_health_live_endpoint(self):
         """测试 /health/live 端点"""

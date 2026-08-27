@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""飞书 WebSocket — 直接用代码内凭证，不依赖环境变量"""
+"""飞书 WebSocket — 从环境变量读取凭证，不硬编码"""
 
 import sys
 import os
@@ -13,9 +13,18 @@ from run_feishu_ws import FeishuWsProcess
 import time
 import signal
 
-APP_ID = "cli_aa9475644e385cc2"
-APP_SECRET = "rLgezJJ57bOoIcfDdH4nFbNHAlby4YLk"
-API_BASE = "http://127.0.0.1:9900"
+# 从环境变量读取（优先），回退到 .env 文件
+from dotenv import load_dotenv
+load_dotenv()
+
+APP_ID = os.getenv("FEISHU_APP_ID", "")
+APP_SECRET = os.getenv("FEISHU_APP_SECRET", "")
+API_BASE = os.getenv("API_BASE", "http://127.0.0.1:9900")
+
+if not APP_ID or not APP_SECRET:
+    print("❌ 请设置环境变量 FEISHU_APP_ID 和 FEISHU_APP_SECRET")
+    print("   或在 .env 文件中配置")
+    sys.exit(1)
 
 ws = FeishuWsProcess(APP_ID, APP_SECRET, api_base=API_BASE)
 ws.run()

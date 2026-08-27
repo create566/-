@@ -8,7 +8,7 @@ import asyncio
 import requests as http_requests
 from loguru import logger
 
-_vendor = r"D:\桌面\智能 监控平台\vendor"
+_vendor = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "vendor")
 if os.path.exists(os.path.join(_vendor, "lark_oapi")):
     sys.path.insert(0, _vendor)
 
@@ -98,7 +98,9 @@ def _on_message(event: P2ImMessageReceiveV1, message_handler) -> None:
                 future = asyncio.run_coroutine_threadsafe(message_handler("", text), loop)
                 reply = future.result(timeout=30)
                 if reply:
-                    _send_reply_sync(chat_id, reply, app_id=None, app_secret=None)
+                    _send_reply_sync(chat_id, reply,
+                        app_id=os.getenv("FEISHU_APP_ID", ""),
+                        app_secret=os.getenv("FEISHU_APP_SECRET", ""))
             except Exception as e:
                 logger.error(f"处理飞书消息异常: {e}")
 

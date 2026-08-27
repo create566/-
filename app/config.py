@@ -1,4 +1,4 @@
-"""配置管理模块 — 全部配置从 .env 读取，不自带任何密钥"""
+
 
 from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -83,6 +83,10 @@ class Settings(BaseSettings):
 
     # ──────────── API 认证 ────────────
     api_key: str = "change-me-in-production"
+
+    # ──────────── 限流 ────────────
+    rate_limit_max_requests: int = 100    # 单窗口最大请求数
+    rate_limit_window_seconds: int = 60   # 滑动窗口时长（秒）
 
 
 # 全局配置实例
